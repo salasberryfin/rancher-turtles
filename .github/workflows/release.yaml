@@ -4,8 +4,6 @@ on:
   push:
     tags:
     - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
-env:
-  PROD_REGISTRY: registry.rancher.com/rancher
 
 permissions:
   contents: write # Allow to create a release.
@@ -30,7 +28,8 @@ jobs:
       TAG: ${{ github.ref_name }}
       REGISTRY: ghcr.io
       USERNAME: ${{ github.actor }}
-      ORG: rancher-sandbox
+      ORG: ${{ secrets.RANCHER_ORG }}
+      GPG_SIGN_PASSPHRASE: ${{ secrets.GPG_SIGN_PASSPHRASE }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -53,7 +52,7 @@ jobs:
     - name: Store list of ghcr images and digests
       id: ghcr-images
       run: |
-        ./scripts/image-digest.sh ${{ env.REGISTRY }} ${{ env.ORG }} ${{ env.TAG }}
+        ./scripts/image-digest.sh ${{ env.REGISTRY }} ${{ env.ORG }} ${{ env.TAG }} ${{ env.GPG_SIGN_PASSPHRASE }}
 
   ghcr-sign:
     runs-on: ubuntu-latest
@@ -81,7 +80,8 @@ jobs:
       TAG: ${{ github.ref_name }}
       REGISTRY: ghcr.io
       USERNAME: ${{ github.actor }}
-      ORG: rancher-sandbox
+      ORG: ${{ secrets.RANCHER_ORG }}
+      GPG_SIGN_PASSPHRASE: ${{ secrets.GPG_SIGN_PASSPHRASE }}
     steps:
       - name: Docker login to ghcr registry
         uses: docker/login-action@v3
@@ -94,15 +94,19 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
-          cosign sign --yes ${{ matrix.images.image }}
+          for image in "${{ matrix.images.image }}"; do
+            cosign sign --yes $image
+￼         done
       - name: Verify pushed ghcr images
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
+          #decrypted_image=$(gpg --decrypt --quiet --batch --passphrase ${{ env.GPG_SIGN_PASSPHRASE }} --output - <(echo ${{ matrix.images.image }} | base64 --decode))
+          #cosign verify ${decrypted_image} --certificate-identity=https://github.com/rancher-sandbox/rancher-turtles/.github/workflows/release.yaml@refs/tags/${{ env.TAG }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
           cosign verify ${{ matrix.images.image }} --certificate-identity=https://github.com/rancher-sandbox/rancher-turtles/.github/workflows/release.yaml@refs/tags/${{ env.TAG }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 
   ghcr-provenance:
-    needs: [build-ghcr, ghcr-sign]
+    needs: [ghcr-sign]
     permissions:
       actions: read 
       id-token: write
@@ -151,9 +155,11 @@ jobs:
       s390x_digest: ${{ steps.prod-images.outputs.s390x_digest }}
     env:
       TAG: ${{ github.ref_name }}
+      PROD_REGISTRY: ${{ secrets.REGISTRY_ENDPOINT }}
       PROD_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
       PROD_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-      PROD_ORG: rancher-sandbox
+      PROD_ORG: ${{ secrets.RANCHER_ORG }}
+      GPG_SIGN_PASSPHRASE: ${{ secrets.GPG_SIGN_PASSPHRASE }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -176,7 +182,7 @@ jobs:
     - name: Store list of prod images and digests
       id: prod-images
       run: |
-        ./scripts/image-digest.sh ${{ env.PROD_REGISTRY }} ${{ env.PROD_ORG }} ${{ env.TAG }}
+        ./scripts/image-digest.sh ${{ env.PROD_REGISTRY }} ${{ env.PROD_ORG }} ${{ env.TAG }} ${{ env.GPG_SIGN_PASSPHRASE }}
 
   prod-sign:
     runs-on: ubuntu-latest
@@ -202,8 +208,10 @@ jobs:
         ]
     env:
       TAG: ${{ github.ref_name }}
+      PROD_REGISTRY: ${{ secrets.REGISTRY_ENDPOINT }}
       PROD_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
       PROD_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+      GPG_SIGN_PASSPHRASE: ${{ secrets.GPG_SIGN_PASSPHRASE }}
     steps:
       - name: Docker login to prod registry
         uses: docker/login-action@v3
@@ -216,15 +224,17 @@ jobs:
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
-          cosign sign --yes ${{ matrix.images.image }}
+          decrypted_image=$(gpg --decrypt --quiet --batch --passphrase ${{ env.GPG_SIGN_PASSPHRASE }} --output - <(echo ${{ matrix.images.image }} | base64 --decode))
+          cosign sign --yes ${decrypted_image}
       - name: Verify pushed ghcr images
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
-          cosign verify ${{ matrix.images.image }} --certificate-identity=https://github.com/rancher-sandbox/rancher-turtles/.github/workflows/release.yaml@refs/tags/${{ env.TAG }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+          decrypted_image=$(gpg --decrypt --quiet --batch --passphrase ${{ env.GPG_SIGN_PASSPHRASE }} --output - <(echo ${{ matrix.images.image }} | base64 --decode))
+          cosign verify ${decrypted_image} --certificate-identity=https://github.com/rancher-sandbox/rancher-turtles/.github/workflows/release.yaml@refs/tags/${{ env.TAG }} --certificate-oidc-issuer=https://token.actions.githubusercontent.com
 
   prod-provenance:
-    needs: [build-prod, prod-sign]
+    needs: [prod-sign]
     permissions:
       actions: read
       id-token: write
@@ -263,7 +273,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.ref_name }}
-      PROD_ORG: rancher-sandbox
+      PROD_REGISTRY: ${{ secrets.REGISTRY_ENDPOINT }}
+      PROD_ORG: ${{ secrets.RANCHER_ORG }}
       RELEASE_DIR: .cr-release-packages
       CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
     steps:
