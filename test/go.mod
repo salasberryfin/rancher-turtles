@@ -11,6 +11,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.13.0
 	github.com/onsi/gomega v1.28.1
 	github.com/rancher-sandbox/rancher-turtles v0.0.0-00010101000000-000000000000
+	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.27.5
 	k8s.io/apimachinery v0.27.5
 	k8s.io/client-go v0.27.5
@@ -136,7 +137,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	k8s.io/apiextensions-apiserver v0.27.5 // indirect
 	k8s.io/apiserver v0.27.5 // indirect

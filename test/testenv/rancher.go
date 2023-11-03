@@ -18,11 +18,13 @@ package testenv
 
 import (
 	"context"
+	"io/ioutil"
 	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	turtlesframework "github.com/rancher-sandbox/rancher-turtles/test/framework"
+	"gopkg.in/yaml.v2"
 
 	"github.com/drone/envsubst/v2"
 	"github.com/rancher-sandbox/rancher-turtles/test/e2e"
@@ -38,6 +40,7 @@ import (
 type DeployRancherInput struct {
 	BootstrapClusterProxy  framework.ClusterProxy
 	HelmBinaryPath         string
+	HelmExtraValuesPath    string
 	InstallCertManager     bool
 	CertManagerChartPath   string
 	CertManagerUrl         string
@@ -61,11 +64,17 @@ type DeployRancherInput struct {
 	Variables              turtlesframework.VariableCollection
 }
 
+type deployRancherValuesFile struct {
+	BootstrapPassword string
+	Hostname          string
+}
+
 func DeployRancher(ctx context.Context, input DeployRancherInput) {
 
 	Expect(ctx).NotTo(BeNil(), "ctx is required for DeployRancher")
 	Expect(input.BootstrapClusterProxy).ToNot(BeNil(), "BootstrapClusterProxy is required for DeployRancher")
 	Expect(input.HelmBinaryPath).ToNot(BeEmpty(), "HelmBinaryPath is required for DeployRancher")
+	Expect(input.HelmExtraValuesPath).ToNot(BeEmpty(), "HelmExtraValuesPath is required for DeployRancher")
 	Expect(input.RancherChartRepoName).ToNot(BeEmpty(), "RancherChartRepoName is required for DeployRancher")
 	Expect(input.RancherChartURL).ToNot(BeEmpty(), "RancherChartURL is required for DeployRancher")
 	Expect(input.RancherChartPath).ToNot(BeEmpty(), "RancherChartPath is required for DeployRancher")
@@ -140,10 +149,19 @@ func DeployRancher(ctx context.Context, input DeployRancherInput) {
 		Expect(err).ToNot(HaveOccurred())
 	}
 
+	yamlExtraValues, err := yaml.Marshal(deployRancherValuesFile{
+		BootstrapPassword: input.RancherPassword,
+		Hostname:          input.RancherHost,
+	})
+	Expect(err).ToNot(HaveOccurred())
+	err = ioutil.WriteFile(input.HelmExtraValuesPath, yamlExtraValues, 0644)
+	Expect(err).ToNot(HaveOccurred())
+
 	By("Installing Rancher")
 	installFlags := opframework.Flags(
 		"--namespace", input.RancherNamespace,
 		"--create-namespace",
+		"--values", input.HelmExtraValuesPath,
 	)
 	if input.RancherVersion != "" {
 		installFlags = append(installFlags, "--version", input.RancherVersion)
@@ -161,9 +179,7 @@ func DeployRancher(ctx context.Context, input DeployRancherInput) {
 		Wait:            true,
 	}
 	values := map[string]string{
-		"bootstrapPassword":         input.RancherPassword,
 		"global.cattle.psp.enabled": "false",
-		"hostname":                  input.RancherHost,
 		"replicas":                  "1",
 	}
 	if input.RancherFeatures != "" {

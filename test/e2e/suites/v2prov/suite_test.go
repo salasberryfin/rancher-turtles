@@ -122,6 +122,7 @@ var _ = BeforeSuite(func() {
 	testenv.DeployRancher(ctx, testenv.DeployRancherInput{
 		BootstrapClusterProxy:  setupClusterResult.BootstrapClusterProxy,
 		HelmBinaryPath:         flagVals.HelmBinaryPath,
+		HelmExtraValuesPath:    flagVals.HelmExtraValuesPath,
 		InstallCertManager:     true,
 		CertManagerChartPath:   e2eConfig.GetVariable(e2e.CertManagerPathVar),
 		CertManagerUrl:         e2eConfig.GetVariable(e2e.CertManagerUrlVar),

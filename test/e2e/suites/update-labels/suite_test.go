@@ -141,6 +141,7 @@ var _ = BeforeSuite(func() {
 	testenv.DeployRancher(ctx, testenv.DeployRancherInput{
 		BootstrapClusterProxy:  setupClusterResult.BootstrapClusterProxy,
 		HelmBinaryPath:         flagVals.HelmBinaryPath,
+		HelmExtraValuesPath:    flagVals.HelmExtraValuesPath,
 		InstallCertManager:     false,
 		RancherChartRepoName:   "rancher-latest",
 		RancherChartURL:        "https://releases.rancher.com/server-charts/latest",
