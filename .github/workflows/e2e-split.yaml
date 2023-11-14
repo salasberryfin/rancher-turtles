@@ -1,0 +1,130 @@
+name: Run split e2e tests
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  push:
+    branches:
+      - main
+      - e2e-split-longs-tests
+  workflow_dispatch:
+
+concurrency: ci_e2e_tests
+
+env:
+  NGROK_AUTHTOKEN: ${{ secrets.NGROK_AUTHTOKEN }}
+  NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
+  RANCHER_HOSTNAME: ${{ secrets.NGROK_DOMAIN }}
+  RANCHER_PASSWORD: ${{ secrets.RANCHER_PASSWORD }}
+  CAPA_ENCODED_CREDS: ${{ secrets.CAPA_ENCODED_CREDS }}
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+jobs:
+  e2e-embedded-capi:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: setupGo
+      uses: actions/setup-go@v4
+      with:
+        go-version: '=1.20.7'
+    - name: Run e2e tests
+      run: GINKGO_FOCUS="embedded-capi" make test-e2e
+    - name: Collect run artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: artifacts
+        path: _artifacts
+    - name: Send failed status to slack
+      if: failure()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "blocks": [
+              {
+                "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Rancher turtles E2E test run failed. Job trigger by ${{ github.event_name }} event(schedule means nightly run, push means push to main)."
+                  },
+                  "accessory": {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": ":github:",
+                        "emoji": true
+                      },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+  e2e-import-gitops:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: setupGo
+      uses: actions/setup-go@v4
+      with:
+        go-version: '=1.20.7'
+    - name: Run e2e tests
+      run: GINKGO_FOCUS="import-gitops" make test-e2e
+    - name: Collect run artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: artifacts
+        path: _artifacts
+    - name: Cleanup Azure Resources
+      if: always()
+      uses: rancher-sandbox/azure-janitor@v0.1.1
+      with:
+        resource-groups: highlander-e2e*
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID}}
+        client-id: ${{ secrets.AZURE_CLIENT_ID}}
+        client-secret: ${{ secrets.AZURE_CLIENT_SECRET}}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID}}
+        commit: true
+    - name: Send failed status to slack
+      if: failure()
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "blocks": [
+              {
+                "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "Rancher turtles E2E test run failed. Job trigger by ${{ github.event_name }} event(schedule means nightly run, push means push to main)."
+                  },
+                  "accessory": {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": ":github:",
+                        "emoji": true
+                      },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
