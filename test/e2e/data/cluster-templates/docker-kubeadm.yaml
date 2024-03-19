@@ -1,7 +1,8 @@
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerCluster
 metadata:
-  name: ${CLUSTER_NAME}
+  name: cluster1
+  namespace: default
   annotations:
     "helm.sh/resource-policy": keep
 spec:
@@ -27,8 +28,9 @@ apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   labels:
-    cni: ${CLUSTER_NAME}-crs-0
-  name: ${CLUSTER_NAME}
+    cni: cluster1-crs-0
+  name: cluster1
+  namespace: default
 spec:
   clusterNetwork:
     pods:
@@ -41,16 +43,17 @@ spec:
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1beta1
     kind: KubeadmControlPlane
-    name: ${CLUSTER_NAME}-control-plane
+    name: cluster1-control-plane
   infrastructureRef:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: DockerCluster
-    name: ${CLUSTER_NAME}
+    name: cluster1
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerMachineTemplate
 metadata:
-  name: ${CLUSTER_NAME}-control-plane
+  name: cluster1-control-plane
+  namespace: default
 spec:
   template:
     spec:
@@ -61,7 +64,8 @@ spec:
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
 metadata:
-  name: ${CLUSTER_NAME}-control-plane
+  name: cluster1-control-plane
+  namespace: default
   annotations:
     "helm.sh/resource-policy": keep
 spec:
@@ -90,14 +94,15 @@ spec:
     infrastructureRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: DockerMachineTemplate
-      name: ${CLUSTER_NAME}-control-plane
-  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
-  version: ${KUBERNETES_VERSION}
+      name: cluster1-control-plane
+  replicas: 1
+  version: v1.26.4
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: DockerMachineTemplate
 metadata:
-  name: ${CLUSTER_NAME}-md-0
+  name: cluster1-md-0
+  namespace: default
 spec:
   template:
     spec:
@@ -108,9 +113,8 @@ spec:
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
-  name: ${CLUSTER_NAME}-md-0
-  annotations:
-    "helm.sh/resource-policy": keep
+  name: cluster1-md-0
+  namespace: default
 spec:
   template:
     spec:
@@ -123,12 +127,13 @@ spec:
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
-  name: ${CLUSTER_NAME}-md-0
+  name: cluster1-md-0
+  namespace: default
   annotations:
     "helm.sh/resource-policy": keep
 spec:
-  clusterName: ${CLUSTER_NAME}
-  replicas: ${WORKER_MACHINE_COUNT}
+  clusterName: cluster1
+  replicas: 2
   selector:
     matchLabels: null
   template:
@@ -137,26 +142,27 @@ spec:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
           kind: KubeadmConfigTemplate
-          name: ${CLUSTER_NAME}-md-0
-      clusterName: ${CLUSTER_NAME}
+          name: cluster1-md-0
+      clusterName: cluster1
       failureDomain: fd4
       infrastructureRef:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: DockerMachineTemplate
-        name: ${CLUSTER_NAME}-md-0
-      version: ${KUBERNETES_VERSION}
+        name: cluster1-md-0
+      version: v1.26.4
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
-  name: ${CLUSTER_NAME}-crs-0
+  name: cluster1-crs-0
+  namespace: default
 spec:
   clusterSelector:
     matchLabels:
-      cni: ${CLUSTER_NAME}-crs-0
+      cni: cluster1-crs-0
   resources:
   - kind: ConfigMap
-    name: cni-${CLUSTER_NAME}-crs-0
+    name: cni-cluster1-crs-0
   strategy: ApplyOnce
 ---
 apiVersion: v1
@@ -240,6 +246,8 @@ data:
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
+                # We're using the dualstack CIDRs here. The order doesn't matter for kindnet as the loops are run concurrently.
+                # REF: https://github.com/kubernetes-sigs/kind/blob/3dbeb894e3092a336ab4278d3823e73a1d66aff7/images/kindnetd/cmd/kindnetd/main.go#L149-L175
                 - name: POD_SUBNET
                   value: '10.1.0.0/16'
               volumeMounts:
@@ -280,4 +288,5 @@ data:
                 path: /lib/modules
 kind: ConfigMap
 metadata:
-  name: cni-${CLUSTER_NAME}-crs-0
+  name: cni-cluster1-crs-0
+  namespace: default
