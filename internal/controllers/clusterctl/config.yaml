@@ -11,7 +11,7 @@ data:
     providers:
     # Cluster API core provider
     - name:         "cluster-api"
-      url:          "https://github.com/rancher-sandbox/cluster-api/releases/v1.7.7/core-components.yaml"
+      url:          "https://github.com/rancher-sandbox/cluster-api/releases/v1.8.4/core-components.yaml"
       type:         "CoreProvider"
 
     # Infrastructure providers
@@ -19,10 +19,10 @@ data:
       url:          "https://github.com/rancher-sandbox/cluster-api-provider-aws/releases/v2.6.1/infrastructure-components.yaml"
       type:         "InfrastructureProvider"
     - name:         "azure"
-      url:          "https://github.com/rancher-sandbox/cluster-api-provider-azure/releases/v1.16.1/infrastructure-components.yaml"
+      url:          "https://github.com/rancher-sandbox/cluster-api-provider-azure/releases/v1.17.0/infrastructure-components.yaml"
       type:         "InfrastructureProvider"
     - name:         "vsphere"
-      url:          "https://github.com/rancher-sandbox/cluster-api-provider-vsphere/releases/v1.11.0/infrastructure-components.yaml"
+      url:          "https://github.com/rancher-sandbox/cluster-api-provider-vsphere/releases/v1.11.2/infrastructure-components.yaml"
       type:         "InfrastructureProvider"
     - name:         "elemental"
       url:          "https://github.com/rancher-sandbox/cluster-api-provider-elemental/releases/v0.7.0/infrastructure-components.yaml"
@@ -33,18 +33,18 @@ data:
 
     # Bootstrap providers
     - name:         "kubeadm"
-      url:          "https://github.com/rancher-sandbox/cluster-api/releases/v1.7.7/bootstrap-components.yaml"
+      url:          "https://github.com/rancher-sandbox/cluster-api/releases/v1.8.4/bootstrap-components.yaml"
       type:         "BootstrapProvider"
     - name:         "rke2"
-      url:          "https://github.com/rancher/cluster-api-provider-rke2/releases/v0.7.0/bootstrap-components.yaml"
+      url:          "https://github.com/rancher/cluster-api-provider-rke2/releases/v0.7.1/bootstrap-components.yaml"
       type:         "BootstrapProvider"
 
     # ControlPlane providers
     - name:         "kubeadm"
-      url:          "https://github.com/rancher-sandbox/cluster-api/releases/v1.7.7/control-plane-components.yaml"
+      url:          "https://github.com/rancher-sandbox/cluster-api/releases/v1.8.4/control-plane-components.yaml"
       type:         "ControlPlaneProvider"
     - name:         "rke2"
-      url:          "https://github.com/rancher/cluster-api-provider-rke2/releases/v0.7.0/control-plane-components.yaml"
+      url:          "https://github.com/rancher/cluster-api-provider-rke2/releases/v0.7.1/control-plane-components.yaml"
       type:         "ControlPlaneProvider"
 
     # Addon providers
