@@ -1,31 +1,33 @@
 name: Bump CAPI providers version
 
-# define scm for turtles
+pipelineid: "capi-providers"
+
+actions:
+  default:
+    title: 'deps: bump capi providers versions'
+    kind: github/pullrequest
+    scmid: turtles
+    spec:
+      automerge: false
+      mergemethod: squash
+      labels:
+        - kind/chore
+        - area/update
+
 scms:
   turtles:
     kind: github
     spec:
-      user: turtles-bot
-      email: turtles@suse.de
-      owner: rancher
-      repository: turtles
+      branch: '{{ .scm.branch }}'
+      email: '{{ .scm.email }}'
+      owner: '{{ .scm.owner }}'
+      repository: '{{ .scm.repository }}'
       token: '{{ requiredEnv "UPDATECLI_GITHUB_TOKEN" }}'
+      user: '{{ .scm.user }}'
       username: '{{ requiredEnv "UPDATECLI_GITHUB_ACTOR" }}'
-      branch: main
       commitusingapi: true
 
-# retrieve latest provider release
 sources:
-  capirelease:
-    kind: githubrelease
-    name: Get the latest core CAPI release
-    spec:
-      owner: "rancher-sandbox"
-      repository: "cluster-api"
-      token: '{{ requiredEnv "UPDATECLI_GITHUB_TOKEN" }}'
-      username: '{{ requiredEnv "UPDATECLI_GITHUB_ACTOR" }}'
-      typeFilter:
-        latest: true
   caprke2release:
     kind: githubrelease
     name: Get the latest CAPI RKE2 bootstrap/control plane provider release
@@ -87,17 +89,7 @@ sources:
       typeFilter:
         latest: true
 
-# update config.yaml accordingly
 targets:
-  bumpcapi:
-    name: bump core capi
-    kind: file
-    spec:
-      file: ./internal/controllers/clusterctl/config.yaml
-      matchpattern: 'https://github.com/rancher-sandbox/cluster-api/releases/(.*)/'
-      replacepattern: 'https://github.com/rancher-sandbox/cluster-api/releases/{{ source "capirelease" }}/'
-    scmid: turtles
-    sourceid: capirelease # Will be ignored as `replacepattern` is specified
   bumpcaprke2:
     name: bump caprke2 provider
     kind: file
@@ -106,7 +98,31 @@ targets:
       matchpattern: 'https://github.com/rancher/cluster-api-provider-rke2/releases/(.*)/'
       replacepattern: 'https://github.com/rancher/cluster-api-provider-rke2/releases/{{ source "caprke2release" }}/'
     scmid: turtles
-    sourceid: caprke2release # Will be ignored as `replacepattern` is specified
+    sourceid: caprke2release
+  bumpcaprke2etcdrestoregomod:
+    name: bump github.com/rancher/cluster-api-provider-rke2 in etcdrestore go.mod
+    kind: golang/gomod
+    scmid: turtles
+    sourceid: caprke2release
+    spec:
+      module: github.com/rancher/cluster-api-provider-rke2
+      file: exp/etcdrestore/go.mod
+      version: {{ source `caprke2release` }}
+  etcdrestoregomodtidy:
+    dependson:
+      - bumpcaprke2etcdrestoregomod
+    disablesourceinput: true
+    kind: shell
+    name: Run `go mod tidy`
+    scmid: turtles
+    spec:
+      changedif:
+        kind: file/checksum
+        spec:
+          files:
+            - go.mod
+            - go.sum
+      command: go mod tidy
   bumpcapz:
     name: bump capz provider
     kind: file
@@ -115,7 +131,7 @@ targets:
       matchpattern: 'https://github.com/rancher-sandbox/cluster-api-provider-azure/releases/(.*)/'
       replacepattern: 'https://github.com/rancher-sandbox/cluster-api-provider-azure/releases/{{ source "capzrelease" }}/'
     scmid: turtles
-    sourceid: capzrelease # Will be ignored as `replacepattern` is specified
+    sourceid: capzrelease
   bumpcapa:
     name: bump capa provider
     kind: file
@@ -124,7 +140,7 @@ targets:
       matchpattern: 'https://github.com/rancher-sandbox/cluster-api-provider-aws/releases/(.*)/'
       replacepattern: 'https://github.com/rancher-sandbox/cluster-api-provider-aws/releases/{{ source "caparelease" }}/'
     scmid: turtles
-    sourceid: caparelease # Will be ignored as `replacepattern` is specified
+    sourceid: caparelease
   bumpcapv:
     name: bump capv provider
     kind: file
@@ -133,7 +149,7 @@ targets:
       matchpattern: 'https://github.com/rancher-sandbox/cluster-api-provider-vsphere/releases/(.*)/'
       replacepattern: 'https://github.com/rancher-sandbox/cluster-api-provider-vsphere/releases/{{ source "capvrelease" }}/'
     scmid: turtles
-    sourceid: capvrelease # Will be ignored as `replacepattern` is specified
+    sourceid: capvrelease
   bumpcapielemental:
     name: bump capi elemental provider
     kind: file
@@ -142,7 +158,7 @@ targets:
       matchpattern: 'https://github.com/rancher-sandbox/cluster-api-provider-elemental/releases/(.*)/'
       replacepattern: 'https://github.com/rancher-sandbox/cluster-api-provider-elemental/releases/{{ source "capielementalrelease" }}/'
     scmid: turtles
-    sourceid: capielementalrelease # Will be ignored as `replacepattern` is specified
+    sourceid: capielementalrelease
   bumpcapifleet:
     name: bump capi fleet addon provider
     kind: file
@@ -151,16 +167,5 @@ targets:
       matchpattern: 'https://github.com/rancher-sandbox/cluster-api-addon-provider-fleet/releases/(.*)/'
       replacepattern: 'https://github.com/rancher-sandbox/cluster-api-addon-provider-fleet/releases/{{ source "capifleetrelease" }}/'
     scmid: turtles
-    sourceid: capifleetrelease # Will be ignored as `replacepattern` is specified
+    sourceid: capifleetrelease
 
-# create a pr with the changes
-actions:
-  default:
-    title: '[updatecli] Bump CAPI Providers versions'
-    kind: github/pullrequest
-    scmid: turtles
-    spec:
-      automerge: false
-      mergemethod: squash
-      labels:
-        - capiproviders

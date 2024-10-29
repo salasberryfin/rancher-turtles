@@ -1,0 +1,8 @@
+scm:
+  kind: github
+  spec:
+    user: turtles-bot
+    email: turtles@suse.de
+    owner: rancher
+    repository: turtles
+    branch: main

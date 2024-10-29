@@ -1,0 +1,6 @@
+policies:
+  - name: Local Updatecli Policies
+    config:
+      - updatecli/updatecli.d/
+    values:
+      - updatecli/values.d/scm.yaml

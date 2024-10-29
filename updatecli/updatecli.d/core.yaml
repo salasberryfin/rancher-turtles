@@ -1,0 +1,51 @@
+name: Bump core CAPI version
+
+pipelineid: "core-capi"
+
+actions:
+  default:
+    title: 'deps: bump core capi version to {{ source "capirelease" }}'
+    kind: github/pullrequest
+    scmid: turtles
+    spec:
+      automerge: false
+      mergemethod: squash
+      labels:
+        - kind/chore
+        - area/update
+
+scms:
+  turtles:
+    kind: github
+    spec:
+      branch: '{{ .scm.branch }}'
+      email: '{{ .scm.email }}'
+      owner: '{{ .scm.owner }}'
+      repository: '{{ .scm.repository }}'
+      token: '{{ requiredEnv "UPDATECLI_GITHUB_TOKEN" }}'
+      user: '{{ .scm.user }}'
+      username: '{{ requiredEnv "UPDATECLI_GITHUB_ACTOR" }}'
+      commitusingapi: true
+
+sources:
+  capirelease:
+    kind: githubrelease
+    name: Get the latest core CAPI release
+    spec:
+      owner: "rancher-sandbox"
+      repository: "cluster-api"
+      token: '{{ requiredEnv "UPDATECLI_GITHUB_TOKEN" }}'
+      username: '{{ requiredEnv "UPDATECLI_GITHUB_ACTOR" }}'
+      typeFilter:
+        latest: true
+
+targets:
+  bumpcapi:
+    name: bump core capi
+    kind: file
+    spec:
+      file: ./internal/controllers/clusterctl/config.yaml
+      matchpattern: 'https://github.com/rancher-sandbox/cluster-api/releases/(.*)/'
+      replacepattern: 'https://github.com/rancher-sandbox/cluster-api/releases/{{ source "capirelease" }}/'
+    scmid: turtles
+    sourceid: capirelease
