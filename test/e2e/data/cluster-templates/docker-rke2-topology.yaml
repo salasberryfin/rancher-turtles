@@ -26,6 +26,8 @@ spec:
       value: ${RKE2_CNI}
     - name: dockerImage
       value: kindest/node:${KUBERNETES_VERSION}
+    - name: dockerAuthSecret
+      value: '${CLUSTER_NAME}-docker-token'
     version: ${RKE2_VERSION}
     workers:
       machineDeployments:
