@@ -46,6 +46,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	managementv3 "github.com/rancher/turtles/api/rancher/management/v3"
+	turtlesv1 "github.com/rancher/turtles/api/v1alpha1"
 	"github.com/rancher/turtles/test/e2e"
 	turtlesframework "github.com/rancher/turtles/test/framework"
 	"github.com/rancher/turtles/test/testenv"
@@ -82,6 +83,8 @@ type CreateUsingGitOpsSpecInput struct {
 
 	// TestClusterReimport defines whether to test un-importing and re-importing the cluster after initial test.
 	TestClusterReimport bool
+	// TestNoCertManager defines whether to test no-cert-manager feature gate enabled.
+	TestNoCertManager bool
 
 	// management.cattle.io specifc
 	CapiClusterOwnerLabel          string
@@ -94,6 +97,10 @@ type CreateUsingGitOpsSpecInput struct {
 	// AdditionalFleetGitRepos specifies additional FleetGitRepos to be created before the main GitRepo.
 	// This is useful for setting up resources like cluster classes/cni/cpi that some tests require.
 	AdditionalFleetGitRepos []turtlesframework.FleetCreateGitRepoInput
+
+	// TurtlesFeatureGatesMap specifies a map of feature gates to override on the existing Rancher Turtles installation.
+	// If not empty, the test will upgrade Rancher Turtles and ensure this are passed as additional values.
+	TurtlesFeatureGatesMap map[string]string
 }
 
 // CreateUsingGitOpsSpec implements a spec that will create a cluster via Fleet and test that it
@@ -206,6 +213,46 @@ func CreateUsingGitOpsSpec(ctx context.Context, inputGetter func() CreateUsingGi
 
 		komega.SetClient(input.BootstrapClusterProxy.GetClient())
 		komega.SetContext(ctx)
+	})
+
+	It("Should verify Turtles installation and update if feature gates are specified", func() {
+		if input.TurtlesFeatureGatesMap != nil {
+			testenv.DeployRancherTurtles(ctx, testenv.DeployRancherTurtlesInput{
+				BootstrapClusterProxy: input.BootstrapClusterProxy,
+				AdditionalValues:      input.TurtlesFeatureGatesMap,
+			})
+		}
+
+		if input.TestNoCertManager {
+			providerList := &turtlesv1.CAPIProviderList{}
+			Eventually(komega.List(providerList)).Should(Succeed())
+
+			certList := &unstructured.UnstructuredList{}
+			certList.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "cert-manager.io",
+				Version: "v1",
+				Kind:    "Certificate",
+			})
+
+			issuerList := &unstructured.UnstructuredList{}
+			issuerList.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "cert-manager.io",
+				Version: "v1",
+				Kind:    "Issuer",
+			})
+
+			By("Waiting for cert-manager Certificates and Issuers to be removed and CAPIProvider status to be updated")
+			for _, provider := range providerList.GetItems() {
+				Eventually(komega.List(certList, client.InNamespace(provider.GetNamespace()))).Should(Succeed())
+				Expect(certList.Items).To(HaveLen(0), "cert-manager Certificates still exist in CAPIProvider %s, namespace %s", provider.GetName(), provider.GetNamespace())
+				Eventually(komega.List(issuerList, client.InNamespace(provider.GetNamespace()))).Should(Succeed())
+				Expect(issuerList.Items).To(HaveLen(0), "cert-manager Issuers still exist in CAPIProvider %s, namespace %s", provider.GetName(), provider.GetNamespace())
+
+				Eventually(func() bool {
+					return conditions.IsTrue(provider, turtlesv1.CAPIProviderWranglerManagedCertificatesCondition)
+				}, input.E2EConfig.GetIntervals(input.BootstrapClusterProxy.GetName(), "wait-rancher")...).Should(BeTrue(), "CAPIProvider %s, namespace %s doesn't have status `WranglerManagedCertificates` true", provider.GetName(), provider.GetNamespace())
+			}
+		}
 	})
 
 	It("Should import a cluster using gitops", func() {
