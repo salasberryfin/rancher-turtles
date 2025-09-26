@@ -48,6 +48,11 @@
     "shellImage": {
       "type": "string"
     },
+    "airGapped": {
+        "type": "boolean",
+        "default": true,
+        "description": "Whether this is an air-gapped installation."
+    },
     "features": {
       "type": "object",
       "properties": {
@@ -141,7 +146,15 @@
                   "type": "object",
                   "properties": {
                     "url": { "type": "string" },
-                    "selector": { "type": "string" }
+                    "selector": {
+                        "type": "object",
+                        "properties": {
+                            "matchlabels": {
+                                "type": "object",
+                                "additionalProperties": { "type": "string" }
+                            }
+                        }
+                    }
                   }
                 },
                 "enableAutomaticUpdates": {
