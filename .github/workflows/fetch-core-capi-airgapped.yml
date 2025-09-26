@@ -1,0 +1,62 @@
+name: Fetch core CAPI components manifest and embed in Turtles chart for air-gapped installations.
+on:
+  # TODO: this is just for debugging
+  push:
+    branches: [ "feat-fetch-core-capi*" ]
+  workflow_dispatch:
+
+env:
+  TURTLES_REF: "${{ github.ref_name }}"
+  GH_TOKEN: "${{ secrets.GH_TOKEN }}"
+
+jobs:
+  create-core-capi-turtles-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for vault
+      id-token: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          ref: "${{ env.TURTLES_REF }}"
+          token: ${{ env.GH_TOKEN }}
+          # Allow making git push request later on
+          persist-credentials: true
+
+      - name: Configure the committer
+        run: |
+          user_id=$(gh api "/users/$APP_USER" --jq .id)
+          git config --global user.name "$APP_USER"
+          git config --global user.email "${user_id}+${APP_USER}@users.noreply.github.com"
+        env:
+          GH_TOKEN: "${{ env.GH_TOKEN }}"
+          APP_USER: "${{ github.actor }}"
+
+      #- name: Install dependencies
+      #  run: |
+      #    sudo snap install jq curl
+
+      - name: Run script to fetch components manifest
+        run: |
+          CAPI_VERSION=$(curl -s "https://api.github.com/repos/rancher-sandbox/cluster-api/releases/latest" | jq -r ".tag_name")
+          echo $CAPI_VERSION
+          #CAPI_VERSION=v1.10.5
+          echo "CAPI_VERSION=${CAPI_VERSION}" >> $GITHUB_ENV
+          BRANCH="fetch-core-capi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "BRANCH=${BRANCH}" >> $GITHUB_ENV
+          git checkout -b "$BRANCH" "$TURTLES_REF"
+          CAPI_VERSION=$CAPI_VERSION ./.github/scripts/fetch-core-capi.sh
+
+      - name: Push and create pull request
+        env:
+          GH_TOKEN: "${{ env.GH_TOKEN }}"
+        run: |
+          git push origin "$BRANCH"
+          body="This PR fetches core CAPI $CAPI_VERSION components manifest from release and embeds the template in the Turtles chart for a simplified air-gapped installation."
+
+          gh pr create \
+            --title "Embed core CAPI provider $CAPI_VERSION components manifest in Turtles chart" \
+            --body "$body" \
+            --head "${{ github.repository_owner }}:$BRANCH" \
+            --base "$TURTLES_REF"
