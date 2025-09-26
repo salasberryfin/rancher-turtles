@@ -71,6 +71,11 @@
           "default": "registry.k8s.io/kubernetes/kubectl:v1.31.4",
           "description": "Image for kubectl tasks."
         },
+        "airGapped": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this is an air-gapped installation."
+        },
         "features": {
           "type": "object",
           "description": "Optional and experimental features.",
