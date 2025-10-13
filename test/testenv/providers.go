@@ -391,7 +391,7 @@ func configureProviderDefaults(ctx context.Context, input DeployRancherTurtlesPr
 			By("Configuring Docker provider with OCI registry")
 			clusterctl := turtlesframework.GetClusterctl(ctx, turtlesframework.GetClusterctlInput{
 				GetLister:          input.BootstrapClusterProxy.GetClient(),
-				ConfigMapNamespace: "rancher-turtles-system",
+				ConfigMapNamespace: "cattle-turtles-system",
 				ConfigMapName:      "clusterctl-config",
 			})
 			dockerVersion := getProviderVersion(clusterctl, "docker")
