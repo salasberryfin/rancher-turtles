@@ -45,11 +45,27 @@ var (
 	// hostName is the host name for the Rancher Manager server.
 	hostName string
 
+	// giteaResult stores the result of Gitea deployment
+	giteaResult *testenv.DeployGiteaResult
+
+	// chartsResult stores the result of building and pushing charts to Gitea
+	chartsResult *testenv.BuildAndPushRancherChartsToGiteaResult
+
 	ctx = context.Background()
 
 	setupClusterResult    *testenv.SetupTestClusterResult
 	bootstrapClusterProxy capiframework.ClusterProxy
 )
+
+// setupData is the data structure shared between SynchronizedBeforeSuite parallel runs
+type setupData struct {
+	e2e.Setup
+	GitAddress       string
+	ChartRepoURL     string
+	ChartRepoHTTPURL string
+	ChartBranch      string
+	ChartVersion     string
+}
 
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -74,26 +90,65 @@ var _ = SynchronizedBeforeSuite(
 			DefaultIngressClassPatch: e2e.IngressClassPatch,
 		})
 
+		By("Deploying Gitea for chart repository")
+		giteaResult = testenv.DeployGitea(ctx, testenv.DeployGiteaInput{
+			BootstrapClusterProxy: setupClusterResult.BootstrapClusterProxy,
+			ValuesFile:            e2e.GiteaValues,
+			CustomIngressConfig:   e2e.GiteaIngress,
+		})
+
+		By("Building and pushing Rancher charts to Gitea")
+		chartsResult = testenv.BuildAndPushRancherChartsToGitea(ctx, testenv.BuildAndPushRancherChartsToGiteaInput{
+			BootstrapClusterProxy:   setupClusterResult.BootstrapClusterProxy,
+			RootDir:                 e2eConfig.GetVariableOrEmpty("ROOT_DIR"),
+			RancherChartsRepoDir:    e2eConfig.GetVariableOrEmpty(e2e.ArtifactsFolderVar) + "/rancher-charts",
+			RancherChartsBaseBranch: "dev-v2.13",
+			GiteaServerAddress:      giteaResult.GitAddress,
+			GiteaRepoName:           "charts",
+			// ChartVersion will be auto-populated from RANCHER_CHART_DEV_VERSION env var or Makefile default
+		})
+
+		By("Deploying Rancher WITHOUT system chart controller configured initially")
+		// Deploy Rancher without chart repo configuration to simulate pre-v0.25 environment
+		// The chart repo will be added later during the upgrade test to trigger system chart controller
 		rancherHookResult := testenv.DeployRancher(ctx, testenv.DeployRancherInput{
 			BootstrapClusterProxy: setupClusterResult.BootstrapClusterProxy,
 			RancherHost:           hostName,
 			RancherPatches:        [][]byte{e2e.RancherSettingPatch},
 		})
 
-		data, err := json.Marshal(e2e.Setup{
-			ClusterName:     setupClusterResult.ClusterName,
-			KubeconfigPath:  setupClusterResult.KubeconfigPath,
-			RancherHostname: rancherHookResult.Hostname,
+		data, err := json.Marshal(setupData{
+			Setup: e2e.Setup{
+				ClusterName:     setupClusterResult.ClusterName,
+				KubeconfigPath:  setupClusterResult.KubeconfigPath,
+				RancherHostname: rancherHookResult.Hostname,
+			},
+			GitAddress:       giteaResult.GitAddress,
+			ChartRepoURL:     chartsResult.ChartRepoURL,
+			ChartRepoHTTPURL: chartsResult.ChartRepoHTTPURL,
+			ChartBranch:      chartsResult.Branch,
+			ChartVersion:     chartsResult.ChartVersion,
 		})
 		Expect(err).ToNot(HaveOccurred())
 		return data
 	},
 	func(sharedData []byte) {
-		setup := e2e.Setup{}
+		setup := setupData{}
 		Expect(json.Unmarshal(sharedData, &setup)).To(Succeed())
 
 		e2eConfig = e2e.LoadE2EConfig()
 		hostName = setup.RancherHostname
+
+		giteaResult = &testenv.DeployGiteaResult{
+			GitAddress: setup.GitAddress,
+		}
+
+		chartsResult = &testenv.BuildAndPushRancherChartsToGiteaResult{
+			ChartRepoURL:     setup.ChartRepoURL,
+			ChartRepoHTTPURL: setup.ChartRepoHTTPURL,
+			Branch:           setup.ChartBranch,
+			ChartVersion:     setup.ChartVersion,
+		}
 
 		bootstrapClusterProxy = capiframework.NewClusterProxy(setup.ClusterName, setup.KubeconfigPath, e2e.InitScheme(), capiframework.WithMachineLogCollector(capiframework.DockerLogCollector{}))
 		Expect(bootstrapClusterProxy).ToNot(BeNil(), "cluster proxy should not be nil")
@@ -116,6 +171,11 @@ var _ = SynchronizedAfterSuite(
 		}
 
 		testenv.UninstallRancherTurtles(ctx, testenv.UninstallRancherTurtlesInput{
+			BootstrapClusterProxy: setupClusterResult.BootstrapClusterProxy,
+		})
+
+		By("Uninstalling Gitea")
+		testenv.UninstallGitea(ctx, testenv.UninstallGiteaInput{
 			BootstrapClusterProxy: setupClusterResult.BootstrapClusterProxy,
 		})
 

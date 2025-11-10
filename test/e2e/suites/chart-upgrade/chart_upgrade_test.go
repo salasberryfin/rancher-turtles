@@ -24,10 +24,7 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
-
-	turtlesv1 "github.com/rancher/turtles/api/v1alpha1"
 
 	"github.com/rancher/turtles/test/e2e"
 	"github.com/rancher/turtles/test/e2e/specs"
@@ -36,8 +33,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
 	capiframework "sigs.k8s.io/cluster-api/test/framework"
@@ -57,59 +52,53 @@ var _ = Describe("Chart upgrade functionality should work", Ordered, Label(e2e.S
 		SetContext(ctx)
 	})
 
-	// Note that this test suite requires an older installation of Turtles
-	// where the separate cluster-api-operator is still deployed.
-	// The embedded cluster-api-operator was shipped in Turtles v0.22.0,
-	// so any version installed here should be lower.
-	//
-	// Consider reworking this suite in the future to test latest --> head/main instead,
-	// once testing the successful embedding of cluster-api-operator will no longer be required.
-	It("Should install old version of Turtles", func() {
+	// Note that this test suite tests migration from v0.24.x to v0.25.x
+	// which includes migration from helm-based installation to the new system chart controller architecture.
+	// The old version (v0.24.x) already has the embedded cluster-api-operator.
+	// The old version is installed using helm install, and the upgrade
+	// uses the system chart controller via Gitea chart repository.
+	It("Should install old version of Turtles using helm", func() {
 		rtInput := testenv.DeployRancherTurtlesInput{
 			BootstrapClusterProxy: bootstrapClusterProxy,
 			TurtlesChartRepoName:  "rancher-turtles",
 			TurtlesChartUrl:       "https://rancher.github.io/turtles",
-			Version:               "v0.21.0",
+			Version:               "v0.24.3",
 			AdditionalValues: map[string]string{
 				"rancherTurtles.namespace": e2e.RancherTurtlesNamespace,
 			},
 		}
 		testenv.DeployRancherTurtles(ctx, rtInput)
 
-		By("Waiting for cluster-api-operator Deployment to be ready")
+		By("Waiting for Turtles controller Deployment to be ready")
 		capiframework.WaitForDeploymentsAvailable(ctx, capiframework.WaitForDeploymentsAvailableInput{
 			Getter: bootstrapClusterProxy.GetClient(),
 			Deployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
-				Name:      "rancher-turtles-cluster-api-operator",
+				Name:      "rancher-turtles-controller-manager",
 				Namespace: e2e.RancherTurtlesNamespace,
 			}},
 		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
 
-		testenv.CAPIOperatorDeployProvider(ctx, testenv.CAPIOperatorDeployProviderInput{
-			BootstrapClusterProxy: bootstrapClusterProxy,
-			CAPIProvidersYAML: [][]byte{
-				e2e.CapiProviders,
-			},
-			WaitForDeployments: []testenv.NamespaceName{
-				{
-					Name:      "capi-controller-manager",
-					Namespace: "capi-system",
-				}, {
-					Name:      "capi-kubeadm-bootstrap-controller-manager",
-					Namespace: "capi-kubeadm-bootstrap-system",
-				}, {
-					Name:      "capi-kubeadm-control-plane-controller-manager",
-					Namespace: "capi-kubeadm-control-plane-system",
-				}, {
-					Name:      "capd-controller-manager",
-					Namespace: "capd-system",
-				}, {
-					Name:      "rke2-bootstrap-controller-manager",
-					Namespace: "rke2-bootstrap-system",
-				}, {
-					Name:      "rke2-control-plane-controller-manager",
-					Namespace: "rke2-control-plane-system",
-				},
+		By("Deploying CAPI providers via providers chart")
+		testenv.DeployRancherTurtlesProviders(ctx, testenv.DeployRancherTurtlesProvidersInput{
+			BootstrapClusterProxy:        bootstrapClusterProxy,
+			WaitDeploymentsReadyInterval: e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers"),
+			UseLegacyCAPINamespace:       true, // Using old version (v0.24.3) which uses capi-system
+			// Limit providers to what matches isolated-kind topology to avoid Helm ownership
+			// conflicts with legacy chart RBAC (e.g., Azure aggregated role), while keeping
+			// migration enabled for namespaced resources.
+			ProviderList: "kubeadm,docker",
+			// CAAPF and RKE2 providers are enabled by default
+			// Adding Kubeadm and Docker for comprehensive testing
+			AdditionalValues: map[string]string{
+				"providers.bootstrapKubeadm.enabled":     "true",
+				"providers.controlplaneKubeadm.enabled":  "true",
+				"providers.infrastructureDocker.enabled": "true",
+				// Explicitly disable cloud providers to prevent duplicate cluster-scoped RBAC
+				// from the legacy chart causing Helm ownership conflicts during install.
+				"providers.infrastructureAWS.enabled":     "false",
+				"providers.infrastructureAzure.enabled":   "false",
+				"providers.infrastructureGCP.enabled":     "false",
+				"providers.infrastructureVSphere.enabled": "false",
 			},
 		})
 	})
@@ -136,6 +125,9 @@ var _ = Describe("Chart upgrade functionality should work", Ordered, Label(e2e.S
 				TopologyNamespace:              topologyNamespace,
 				SkipCleanup:                    true,
 				SkipDeletionTest:               true,
+				// AdditionalTemplateVariables: map[string]string{
+				// 	e2e.KubernetesVersionVar: e2e.LoadE2EConfig().GetVariableOrEmpty(e2e.KubernetesVersionVar),
+				// },
 				AdditionalFleetGitRepos: []framework.FleetCreateGitRepoInput{
 					{
 						Name:            "docker-cluster-classes-regular",
@@ -154,7 +146,7 @@ var _ = Describe("Chart upgrade functionality should work", Ordered, Label(e2e.S
 		})
 	})
 
-	It("Should upgrade Turtles to head/main and validate providers", func() {
+	It("Should upgrade Turtles via system chart controller and validate providers", func() {
 		// There can be only one core CAPI provider installed at a time.
 		By("Remove the core CAPI provider before upgrade")
 		testenv.RemoveCAPIProvider(ctx, testenv.RemoveCAPIProviderInput{
@@ -163,153 +155,100 @@ var _ = Describe("Chart upgrade functionality should work", Ordered, Label(e2e.S
 			ProviderNamespace:     "capi-system",
 		})
 
-		// Upgrade Turtles chart to locally built one
-		testenv.DeployRancherTurtles(ctx, testenv.DeployRancherTurtlesInput{
+		By("Configuring Rancher to use Gitea chart repository for system chart controller")
+		// Update Rancher deployment with environment variables to enable system chart controller
+		// This simulates upgrading Rancher to a version with system chart controller support
+		// The chart version was passed from the setup phase where it was populated from RANCHER_CHART_DEV_VERSION
+		testenv.UpdateRancherDeploymentWithChartConfig(ctx, testenv.UpdateRancherDeploymentWithChartConfigInput{
 			BootstrapClusterProxy: bootstrapClusterProxy,
-			AdditionalValues:      map[string]string{},
+			ChartRepoURL:          chartsResult.ChartRepoHTTPURL,
+			ChartRepoBranch:       chartsResult.Branch,
+			ChartVersion:          chartsResult.ChartVersion,
 		})
 
-		By("Waiting for the upstream CAPI operator deployment to be removed")
-		framework.WaitForDeploymentsRemoved(ctx, framework.WaitForDeploymentsRemovedInput{
+		By("Waiting for Rancher to restart with new configuration")
+		// Wait for Rancher deployment to be ready after update
+		capiframework.WaitForDeploymentsAvailable(ctx, capiframework.WaitForDeploymentsAvailableInput{
 			Getter: bootstrapClusterProxy.GetClient(),
 			Deployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
-				Name:      "rancher-turtles-cluster-api-operator",
+				Name:      "rancher",
+				Namespace: e2e.RancherNamespace,
+			}},
+		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-rancher")...)
+
+		By("Waiting for Turtles controller deployment to be upgraded")
+		capiframework.WaitForDeploymentsAvailable(ctx, capiframework.WaitForDeploymentsAvailableInput{
+			Getter: bootstrapClusterProxy.GetClient(),
+			Deployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+				Name:      "rancher-turtles-controller-manager",
 				Namespace: e2e.RancherTurtlesNamespace,
 			}},
 		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
 
-		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
-			Getter:  bootstrapClusterProxy.GetClient(),
-			Version: e2e.CAPIVersion,
-			Deployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
-				Name:      "capi-controller-manager",
-				Namespace: "cattle-capi-system",
-			}},
-			Image:     "registry.suse.com/rancher/cluster-api-controller:",
-			Name:      "cluster-api",
-			Namespace: "cattle-capi-system",
-		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
-
-		By("Verifying Kubeadm CAPIProvider version has not changed after upgrade")
+		By("Verifying CAPI providers are still running after upgrade")
+		// Since providers were installed before upgrade, they should remain operational
+		// and keep managing the existing workload cluster
 		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
 			Getter:    bootstrapClusterProxy.GetClient(),
-			Version:   "v1.9.5", // provider version that was installed previously
+			Name:      "cluster-api",
+			Namespace: "capi-system",
+		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
+
+		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
+			Getter:    bootstrapClusterProxy.GetClient(),
 			Name:      "kubeadm-bootstrap",
 			Namespace: "capi-kubeadm-bootstrap-system",
 		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
 
 		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
 			Getter:    bootstrapClusterProxy.GetClient(),
-			Version:   "v1.9.5", // provider version that was installed previously
 			Name:      "kubeadm-control-plane",
 			Namespace: "capi-kubeadm-control-plane-system",
 		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
 
-		By("Verifying CAPD CAPIProvider version has not changed after upgrade")
 		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
 			Getter:    bootstrapClusterProxy.GetClient(),
-			Version:   "v1.9.5", // provider version that was installed previously
+			Name:      "rke2-bootstrap",
+			Namespace: "rke2-bootstrap-system",
+		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
+
+		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
+			Getter:    bootstrapClusterProxy.GetClient(),
+			Name:      "rke2-control-plane",
+			Namespace: "rke2-control-plane-system",
+		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
+
+		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
+			Getter:    bootstrapClusterProxy.GetClient(),
+			Name:      "fleet",
+			Namespace: "rancher-turtles-system",
+		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
+
+		framework.WaitForCAPIProviderRollout(ctx, framework.WaitForCAPIProviderRolloutInput{
+			Getter:    bootstrapClusterProxy.GetClient(),
 			Name:      "docker",
 			Namespace: "capd-system",
 		}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...)
 
-		framework.VerifyCustomResourceHasBeenRemoved(ctx, framework.VerifyCustomResourceHasBeenRemovedInput{
-			Lister: bootstrapClusterProxy.GetClient(),
-			GroupVersionKind: schema.GroupVersionKind{
-				Group:   "operator.cluster.x-k8s.io",
-				Version: "v1alpha2",
-				Kind:    "AddonProvider",
+		By("Expanding providers under system chart controller (post-upgrade)")
+		testenv.DeployRancherTurtlesProviders(ctx, testenv.DeployRancherTurtlesProvidersInput{
+			BootstrapClusterProxy:        bootstrapClusterProxy,
+			WaitDeploymentsReadyInterval: e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers"),
+			UseLegacyCAPINamespace:       false, // After upgrade, using new version with cattle-capi-system
+			// Enable additional cloud providers now that the system chart controller is active
+			ProviderList: "aws,gcp,vsphere",
+			AdditionalValues: map[string]string{
+				"providers.infrastructureAWS.enabled":     "true",
+				"providers.infrastructureGCP.enabled":     "true",
+				"providers.infrastructureVSphere.enabled": "true",
 			},
 		})
 
-		framework.VerifyCustomResourceHasBeenRemoved(ctx, framework.VerifyCustomResourceHasBeenRemovedInput{
-			Lister: bootstrapClusterProxy.GetClient(),
-			GroupVersionKind: schema.GroupVersionKind{
-				Group:   "operator.cluster.x-k8s.io",
-				Version: "v1alpha2",
-				Kind:    "BootstrapProvider",
-			},
-		})
-
-		framework.VerifyCustomResourceHasBeenRemoved(ctx, framework.VerifyCustomResourceHasBeenRemovedInput{
-			Lister: bootstrapClusterProxy.GetClient(),
-			GroupVersionKind: schema.GroupVersionKind{
-				Group:   "operator.cluster.x-k8s.io",
-				Version: "v1alpha2",
-				Kind:    "ControlPlaneProvider",
-			},
-		})
-
-		framework.VerifyCustomResourceHasBeenRemoved(ctx, framework.VerifyCustomResourceHasBeenRemovedInput{
-			Lister: bootstrapClusterProxy.GetClient(),
-			GroupVersionKind: schema.GroupVersionKind{
-				Group:   "operator.cluster.x-k8s.io",
-				Version: "v1alpha2",
-				Kind:    "CoreProvider",
-			},
-		})
-
-		framework.VerifyCustomResourceHasBeenRemoved(ctx, framework.VerifyCustomResourceHasBeenRemovedInput{
-			Lister: bootstrapClusterProxy.GetClient(),
-			GroupVersionKind: schema.GroupVersionKind{
-				Group:   "operator.cluster.x-k8s.io",
-				Version: "v1alpha2",
-				Kind:    "InfrastructureProvider",
-			},
-		})
-
-		framework.VerifyCustomResourceHasBeenRemoved(ctx, framework.VerifyCustomResourceHasBeenRemovedInput{
-			Lister: bootstrapClusterProxy.GetClient(),
-			GroupVersionKind: schema.GroupVersionKind{
-				Group:   "operator.cluster.x-k8s.io",
-				Version: "v1alpha2",
-				Kind:    "IPAMProvider",
-			},
-		})
-
-		framework.VerifyCustomResourceHasBeenRemoved(ctx, framework.VerifyCustomResourceHasBeenRemovedInput{
-			Lister: bootstrapClusterProxy.GetClient(),
-			GroupVersionKind: schema.GroupVersionKind{
-				Group:   "operator.cluster.x-k8s.io",
-				Version: "v1alpha2",
-				Kind:    "RuntimeExtensionProvider",
-			},
-		})
-
+		By("Verifying workload cluster is still healthy after upgrade")
 		framework.VerifyCluster(ctx, framework.VerifyClusterInput{
 			BootstrapClusterProxy:   bootstrapClusterProxy,
 			Name:                    clusterName,
 			DeleteAfterVerification: true,
 		})
-
-		testenv.DeployRancherTurtlesProviders(ctx, testenv.DeployRancherTurtlesProvidersInput{
-			BootstrapClusterProxy: bootstrapClusterProxy,
-			AdditionalValues: map[string]string{
-				// CAAPF and CAPRKE2 are enabled by default in the providers chart
-				"providers.bootstrapKubeadm.enabled":     "true",
-				"providers.controlplaneKubeadm.enabled":  "true",
-				"providers.infrastructureDocker.enabled": "true",
-			},
-			WaitDeploymentsReadyInterval: e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers"),
-		})
-
-		By("Verifying providers chart adopted pre-existing CAPIProvider resources with Helm ownership")
-		verifyAdopted := func(name, namespace string) {
-			provider := &turtlesv1.CAPIProvider{}
-			key := types.NamespacedName{Name: name, Namespace: namespace}
-			Eventually(func(g Gomega) {
-				g.Expect(bootstrapClusterProxy.GetClient().Get(ctx, key, provider)).To(Succeed())
-				g.Expect(provider.GetLabels()).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "Helm"))
-				g.Expect(provider.GetAnnotations()).To(HaveKeyWithValue("meta.helm.sh/release-name", e2e.ProvidersChartName))
-				g.Expect(provider.GetAnnotations()).To(HaveKeyWithValue("meta.helm.sh/release-namespace", e2e.RancherTurtlesNamespace))
-			}, e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...).Should(Succeed(),
-				"CAPIProvider %s/%s should be adopted by Helm release %s in %s",
-				namespace, name, e2e.ProvidersChartName, e2e.RancherTurtlesNamespace,
-			)
-		}
-
-		verifyAdopted("fleet", "fleet-addon-system")
-		verifyAdopted("rke2-bootstrap", "rke2-bootstrap-system")
-		verifyAdopted("rke2-control-plane", "rke2-control-plane-system")
 	})
 })
