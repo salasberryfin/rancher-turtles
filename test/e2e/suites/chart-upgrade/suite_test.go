@@ -80,8 +80,9 @@ var _ = SynchronizedBeforeSuite(
 		e2eConfig := e2e.LoadE2EConfig()
 		e2eConfig.ManagementClusterName = e2eConfig.ManagementClusterName + "-chart-upgrade"
 		setupClusterResult = testenv.SetupTestCluster(ctx, testenv.SetupTestClusterInput{
-			E2EConfig: e2eConfig,
-			Scheme:    e2e.InitScheme(),
+			E2EConfig:         e2eConfig,
+			Scheme:            e2e.InitScheme(),
+			KubernetesVersion: "v1.33.0", // Use v1.33.0 for Rancher 2.12.3 compatibility (requires < v1.34.0)
 		})
 
 		testenv.RancherDeployIngress(ctx, testenv.RancherDeployIngressInput{
@@ -97,7 +98,7 @@ var _ = SynchronizedBeforeSuite(
 			CustomIngressConfig:   e2e.GiteaIngress,
 		})
 
-		By("Building and pushing Rancher charts to Gitea")
+		By("Building and pushing Rancher charts to Gitea for later upgrade")
 		chartsResult = testenv.BuildAndPushRancherChartsToGitea(ctx, testenv.BuildAndPushRancherChartsToGiteaInput{
 			BootstrapClusterProxy:   setupClusterResult.BootstrapClusterProxy,
 			RootDir:                 e2eConfig.GetVariableOrEmpty("ROOT_DIR"),
@@ -108,14 +109,11 @@ var _ = SynchronizedBeforeSuite(
 			// ChartVersion will be auto-populated from RANCHER_CHART_DEV_VERSION env var or Makefile default
 		})
 
-		By("Deploying Rancher WITHOUT system chart controller configured initially")
-		// Deploy Rancher without chart repo configuration to simulate pre-v0.25 environment
-		// The chart repo will be added later during the upgrade test to trigger system chart controller
-		rancherHookResult := testenv.DeployRancher(ctx, testenv.DeployRancherInput{
-			BootstrapClusterProxy: setupClusterResult.BootstrapClusterProxy,
-			RancherHost:           hostName,
-			RancherPatches:        [][]byte{e2e.RancherSettingPatch},
-		})
+		// Note: Rancher installation is moved to the test itself to control versions
+		// The test will install Rancher 2.12.3 first, then upgrade to 2.13.x
+		rancherHookResult := testenv.PreRancherInstallHookResult{
+			Hostname: hostName,
+		}
 
 		data, err := json.Marshal(setupData{
 			Setup: e2e.Setup{

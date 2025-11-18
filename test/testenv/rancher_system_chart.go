@@ -30,6 +30,7 @@ import (
 	"github.com/rancher/turtles/test/e2e"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -105,6 +106,91 @@ func UpdateRancherDeploymentWithChartConfig(ctx context.Context, input UpdateRan
 
 	// Update the deployment
 	Expect(input.BootstrapClusterProxy.GetClient().Update(ctx, deployment)).To(Succeed())
+}
+
+// UpgradeRancherWithGiteaInput represents the input for UpgradeRancherWithGitea.
+type UpgradeRancherWithGiteaInput struct {
+	// BootstrapClusterProxy is the cluster proxy for the bootstrap cluster.
+	BootstrapClusterProxy framework.ClusterProxy
+
+	// HelmBinaryPath is the path to the Helm binary.
+	HelmBinaryPath string `env:"HELM_BINARY_PATH"`
+
+	// RancherChartRepoName is the repository name for Rancher chart.
+	RancherChartRepoName string `env:"RANCHER_REPO_NAME"`
+
+	// RancherChartURL is the URL for Rancher chart.
+	RancherChartURL string `env:"RANCHER_URL"`
+
+	// RancherNamespace is the namespace for Rancher.
+	RancherNamespace string `env:"RANCHER_NAMESPACE" envDefault:"cattle-system"`
+
+	// RancherVersion is the version to upgrade to.
+	RancherVersion string
+
+	// ChartRepoURL is the URL of the Gitea chart repository (e.g., http://gitea.address/git/charts).
+	ChartRepoURL string
+
+	// ChartRepoBranch is the branch to use from the chart repository.
+	ChartRepoBranch string
+
+	// ChartVersion is the Turtles chart version (e.g., "108.0.0+up99.99.99").
+	ChartVersion string
+
+	// RancherWaitInterval is the wait interval for Rancher.
+	RancherWaitInterval []interface{} `envDefault:"15m,30s"`
+}
+
+// UpgradeRancherWithGitea upgrades Rancher to a new version and configures it with Gitea chart repository
+// environment variables to enable the system chart controller.
+func UpgradeRancherWithGitea(ctx context.Context, input UpgradeRancherWithGiteaInput) {
+	Expect(turtlesframework.Parse(&input)).To(Succeed(), "Failed to parse environment variables")
+
+	Expect(ctx).NotTo(BeNil(), "ctx is required for UpgradeRancherWithGitea")
+	Expect(input.BootstrapClusterProxy).NotTo(BeNil(), "BootstrapClusterProxy is required")
+	Expect(input.HelmBinaryPath).NotTo(BeEmpty(), "HelmBinaryPath is required")
+	Expect(input.RancherChartRepoName).NotTo(BeEmpty(), "RancherChartRepoName is required")
+	Expect(input.RancherChartURL).NotTo(BeEmpty(), "RancherChartURL is required")
+	Expect(input.RancherNamespace).NotTo(BeEmpty(), "RancherNamespace is required")
+	Expect(input.RancherVersion).NotTo(BeEmpty(), "RancherVersion is required")
+	Expect(input.ChartRepoURL).NotTo(BeEmpty(), "ChartRepoURL is required")
+	Expect(input.ChartRepoBranch).NotTo(BeEmpty(), "ChartRepoBranch is required")
+	Expect(input.ChartVersion).NotTo(BeEmpty(), "ChartVersion is required")
+	Expect(input.RancherWaitInterval).NotTo(BeNil(), "RancherWaitInterval is required")
+
+	By(fmt.Sprintf("Upgrading Rancher to version %s with Gitea chart repository", input.RancherVersion))
+
+	// Run helm upgrade with environment variables for system chart controller
+	upgradeCmd := exec.Command(
+		input.HelmBinaryPath,
+		"upgrade", "rancher",
+		fmt.Sprintf("%s/rancher", input.RancherChartRepoName),
+		"--namespace", input.RancherNamespace,
+		"--version", input.RancherVersion,
+		"--reuse-values",
+		"--set", "extraEnv[0].name=CATTLE_CHART_DEFAULT_URL",
+		"--set", fmt.Sprintf("extraEnv[0].value=%s", input.ChartRepoURL),
+		"--set", "extraEnv[1].name=CATTLE_CHART_DEFAULT_BRANCH",
+		"--set", fmt.Sprintf("extraEnv[1].value=%s", input.ChartRepoBranch),
+		"--set", "extraEnv[2].name=CATTLE_RANCHER_TURTLES_VERSION",
+		"--set", fmt.Sprintf("extraEnv[2].value=%s", input.ChartVersion),
+		"--wait",
+	)
+	upgradeCmd.Env = append(os.Environ(), fmt.Sprintf("KUBECONFIG=%s", input.BootstrapClusterProxy.GetKubeconfigPath()))
+
+	output, err := upgradeCmd.CombinedOutput()
+	Expect(err).ToNot(HaveOccurred(), "Failed to upgrade Rancher: %s", string(output))
+
+	By("Waiting for Rancher deployment to be ready after upgrade")
+	framework.WaitForDeploymentsAvailable(ctx, framework.WaitForDeploymentsAvailableInput{
+		Getter: input.BootstrapClusterProxy.GetClient(),
+		Deployment: &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "rancher",
+				Namespace: input.RancherNamespace,
+			},
+		},
+	}, input.RancherWaitInterval...)
 }
 
 // BuildAndPushRancherChartsToGiteaInput represents the input parameters for building and pushing Rancher charts to Gitea.

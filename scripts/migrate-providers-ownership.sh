@@ -89,15 +89,15 @@ adopt_capiprovider() {
   fi
 }
 
-adopt_clusterrole() {
-  local name=$1
-  if kubectl "${KUBECONFIG_ARGS[@]}" get clusterrole "$name" >/dev/null 2>&1; then
-    echo "Adopting ClusterRole $name"
-    patch_metadata clusterrole "$name"
-  else
-    echo "ClusterRole $name not found, skipping"
-  fi
-}
+# adopt_clusterrole() {
+#   local name=$1
+#   if kubectl "${KUBECONFIG_ARGS[@]}" get clusterrole "$name" >/dev/null 2>&1; then
+#     echo "Adopting ClusterRole $name"
+#     patch_metadata clusterrole "$name"
+#   else
+#     echo "ClusterRole $name not found, skipping"
+#   fi
+# }
 
 for name in fleet rke2-bootstrap rke2-control-plane; do
   namespace=""
@@ -125,6 +125,6 @@ done
 
 # Adopt cluster-scoped RBAC resources that may have been created by the legacy rancher-turtles chart
 # and are now managed by the rancher-turtles-providers chart to prevent Helm ownership conflicts.
-adopt_clusterrole caprke2-azure-aggregated-role
+# adopt_clusterrole caprke2-azure-aggregated-role
 
 echo "Migration completed"
