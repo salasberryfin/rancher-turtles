@@ -58,7 +58,7 @@ var _ = Describe("Chart upgrade functionality should work", Ordered, Label(e2e.S
 	// - Workload clusters are running and must remain operational during upgrade
 	// - Provider resources need to be migrated (not destroyed and recreated)
 	//
-	// Migration steps:
+	// Migration steps following the official migration guide (https://turtles.docs.rancher.com/turtles/next/en/tutorials/migration.html):
 	// 1. Install Rancher 2.12.3 (simulating existing installation)
 	// 2. Install Turtles v0.24.3 via Helm
 	// 3. Install CAPI providers (simulating existing production setup)
@@ -209,10 +209,11 @@ var _ = Describe("Chart upgrade functionality should work", Ordered, Label(e2e.S
 			BootstrapClusterProxy:        bootstrapClusterProxy,
 			WaitDeploymentsReadyInterval: e2eConfig.GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers"),
 			UseLegacyCAPINamespace:       false, // v0.25.x uses new cattle-capi-system namespace
-			ProviderList:                 "aws,gcp",
+			ProviderList:                 "docker,aws,gcp",
 			AdditionalValues: map[string]string{
-				"providers.infrastructureAWS.enabled": "true",
-				"providers.infrastructureGCP.enabled": "true",
+				"providers.infrastructureDocker.enabled": "true",
+				"providers.infrastructureAWS.enabled":    "true",
+				"providers.infrastructureGCP.enabled":    "true",
 			},
 		})
 
