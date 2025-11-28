@@ -1,0 +1,30 @@
+name: Test workflow
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "github-actions-condition" ]
+
+jobs:
+  something:
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+    name: This is the first job
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image_package_pair:
+          - image_name: rancher/cluster-api-controller
+            package: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Calling the reusable workflow
+        uses: ./.github/workflows/reusable
+        with:
+          #should_sign: ${{ startsWith(matrix.image_package_pair.image_name, 'rancher/') }} # Only sign images pushed to the Prime registry
+          should_sign: ${{ !startsWith(matrix.image_package_pair.image_name, 'rancher/') }} # Only sign images pushed to the Prime registry

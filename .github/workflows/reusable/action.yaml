@@ -1,0 +1,39 @@
+name: "Reusable"
+description: "This is a reusable workflow that accepts an input"
+inputs:
+  should_sign:
+    description: "Whether to sign the image"
+    type: boolean
+    required: false
+    default: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '>=1.24.0'
+    
+    - name: Install dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+    
+    - name: Check should_sign value
+      shell: bash
+      run: |
+        set -e
+
+        echo "Should the workflow sign the image: ${{ inputs.should_sign }}"
+
+    - name: Run if should_sign is true
+      if: ${{ inputs.should_sign == 'true' }}
+      shell: bash
+      env:
+        COSIGN_EXPERIMENTAL: 1
+      run: |
+        set -e
+
+        echo "Signing image"
