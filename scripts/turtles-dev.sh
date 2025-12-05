@@ -33,18 +33,22 @@ TURTLES_VERSION=${TURTLES_VERSION:-dev}
 TURTLES_IMAGE=${TURTLES_IMAGE:-ghcr.io/rancher/turtles:$TURTLES_VERSION}
 
 GITEA_PASSWORD=${GITEA_PASSWORD:-giteaadmin}
-GITEA_INGRESS_CLASS_NAME=${GITEA_INGRESS_CLASS_NAME:-ngrok}
+GITEA_HOSTNAME="gitea.${RANCHER_HOSTNAME}"
 RANCHER_CHARTS_REPO_DIR=${RANCHER_CHARTS_REPO_DIR}
 RANCHER_CHART_DEV_VERSION=${RANCHER_CHART_DEV_VERSION}
 RANCHER_CHARTS_BASE_BRANCH=${RANCHER_CHARTS_BASE_BRANCH}
 
-BASEDIR=$(dirname "$0")
+PANGOLIN_ENDPOINT=${PANGOLIN_ENDPOINT}
+NEWT_NAMESPACE=${NEWT_NAMESPACE:-newt}
+NEWT_ID=${NEWT_ID}
+NEWT_SECRET=${NEWT_SECRET}
 
-if pgrep -x ngrok > /dev/null; then
-    echo "Stopping existing ngrok processes..."
-    pkill -x ngrok
-    sleep 2
+if [ -z "$NEWT_ID" ] || [ -z "$NEWT_SECRET" ] || [ -z "$PANGOLIN_ENDPOINT" ]; then
+    echo "Error: NEWT_ID, NEWT_SECRET and PANGOLIN_ENDPOINT cannot be empty."
+    exit 1
 fi
+
+BASEDIR=$(dirname "$0")
 
 kind create cluster --config "$BASEDIR/kind-cluster-with-extramounts.yaml" --name $CLUSTER_NAME
 docker pull $RANCHER_IMAGE
@@ -55,6 +59,7 @@ kubectl rollout status deployment coredns -n kube-system --timeout=90s
 helm repo add rancher-$RANCHER_CHANNEL https://releases.rancher.com/server-charts/$RANCHER_CHANNEL --force-update
 helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo add gitea-charts https://dl.gitea.com/charts/ --force-update
+helm repo add fossorial https://charts.fossorial.io --force-update
 helm repo update
 
 helm install cert-manager jetstack/cert-manager \
@@ -62,33 +67,29 @@ helm install cert-manager jetstack/cert-manager \
     --create-namespace \
     --set crds.enabled=true
 
+# configure and install Newt for Pangolin
+kubectl create ns ${NEWT_NAMESPACE}
+kubectl create secret generic newt-cred -n ${NEWT_NAMESPACE} \
+    --from-literal=PANGOLIN_ENDPOINT=${PANGOLIN_ENDPOINT} \
+    --from-literal=NEWT_ID=${NEWT_ID} \
+    --from-literal=NEWT_SECRET=${NEWT_SECRET}
+
+helm install my-newt fossorial/newt \
+    -n ${NEWT_NAMESPACE} --create-namespace \
+    -f test/e2e/data/newt/values.yaml
+
 helm install gitea gitea-charts/gitea \
     -f test/e2e/data/gitea/values.yaml \
     --set gitea.admin.password=$GITEA_PASSWORD \
     --wait
 
-cleanup() {
-    echo "Cleaning up background processes..."
-    [ -n "$NGROK_PID" ] && kill $NGROK_PID 2>/dev/null && echo "Stopped ngrok (PID: $NGROK_PID)"
-    [ -n "$RANCHER_PORT_FORWARD_PID" ] && kill $RANCHER_PORT_FORWARD_PID 2>/dev/null && echo "Stopped Rancher port-forward (PID: $RANCHER_PORT_FORWARD_PID)"
-    [ -n "$GITEA_PORT_FORWARD_PID" ] && kill $GITEA_PORT_FORWARD_PID 2>/dev/null && echo "Stopped Gitea port-forward (PID: $GITEA_PORT_FORWARD_PID)"
-    [ -f "$NGROK_CONFIG_FILE" ] && rm -f "$NGROK_CONFIG_FILE" && echo "Removed ngrok config file"
-}
-trap cleanup EXIT INT TERM
-
 # Build and load the controller image
 make docker-build-prime
 kind load docker-image $TURTLES_IMAGE --name $CLUSTER_NAME
 
-# Start port-forwarding for Gitea
-echo "Starting port-forward for Gitea..."
-kubectl port-forward --namespace default svc/gitea-http 10001:3000 > /tmp/gitea-port-forward.log 2>&1 &
-GITEA_PORT_FORWARD_PID=$!
-
 # Wait for Gitea to be accessible locally
-echo "Waiting for Gitea to be accessible on localhost:10001..."
-until curl -s -o /dev/null -w "%{http_code}" http://localhost:10001 | grep -q "200\|302\|301"; do 
-    echo "Waiting for local gitea port-forward..."
+until curl -s -o /dev/null -w "%{http_code}" https://${GITEA_HOSTNAME} | grep -q "200\|302\|301"; do
+    echo "Waiting for Gitea to be accessible on ${GITEA_HOSTNAME}..."
     sleep 2
 done
 echo "Gitea is accessible locally!"
@@ -104,104 +105,28 @@ helm install rancher rancher-$RANCHER_CHANNEL/rancher \
     --version="$RANCHER_VERSION" \
     --wait
 
-# Start port-forwarding for Rancher
-echo "Starting port-forward for Rancher..."
-kubectl port-forward --namespace cattle-system svc/rancher 10000:80 > /tmp/rancher-port-forward.log 2>&1 &
-RANCHER_PORT_FORWARD_PID=$!
-echo "Rancher port-forward started with PID: $RANCHER_PORT_FORWARD_PID"
-
 # Wait for Rancher to be accessible locally
-echo "Waiting for Rancher to be accessible on localhost:10000..."
-until curl -s -o /dev/null -w "%{http_code}" http://localhost:10000 | grep -q "200\|302\|301"; do 
-    echo "Waiting for local rancher port-forward..."
+until curl -s -o /dev/null -w "%{http_code}" https://${RANCHER_HOSTNAME} | grep -q "200\|302\|301"; do
+    echo "Waiting for Rancher to be accessible on ${RANCHER_HOSTNAME}..."
     sleep 2
 done
-echo "Rancher is accessible locally!"
-
-# Now both services are ready, start ngrok with both endpoints
-NGROK_CONFIG_FILE="/tmp/ngrok-turtles-dev.yml"
-cat > "$NGROK_CONFIG_FILE" <<EOF
-version: 2
-authtoken: $NGROK_AUTHTOKEN
-tunnels:
-  rancher:
-    proto: http
-    addr: http://localhost:10000
-    hostname: $RANCHER_HOSTNAME
-  gitea:
-    proto: http
-    addr: http://localhost:10001
-    hostname: gitea.$RANCHER_HOSTNAME
-EOF
-
-echo "Starting ngrok with both Rancher and Gitea endpoints..."
-ngrok start --all --config "$NGROK_CONFIG_FILE" --log stdout > /tmp/ngrok-turtles-dev.log 2>&1 &
-NGROK_PID=$!
-echo "ngrok started with PID: $NGROK_PID"
-sleep 5
-
-if ! kill -0 $NGROK_PID 2>/dev/null; then
-    echo "ERROR: ngrok failed, check logs:"
-    cat /tmp/ngrok-turtles-dev.log
-    exit 1
-fi
-
-# Wait for both endpoints to be accessible via ngrok
-echo "Waiting for Gitea to be accessible via ngrok (https://gitea.$RANCHER_HOSTNAME)..."
-RETRY_COUNT=0
-MAX_RETRIES=30
-until [ "$(curl -s -o /dev/null -w "%{http_code}" https://gitea.$RANCHER_HOSTNAME)" = "200" ]; do 
-    RETRY_COUNT=$((RETRY_COUNT+1))
-    if [ $RETRY_COUNT -gt $MAX_RETRIES ]; then
-        echo "ERROR: Gitea not accessible via ngrok after $MAX_RETRIES attempts"
-        echo "ngrok logs:"
-        cat /tmp/ngrok-turtles-dev.log
-        exit 1
-    fi
-    echo "Waiting for gitea via ngrok (attempt $RETRY_COUNT/$MAX_RETRIES)..."
-    sleep 2
-done
-echo "Gitea is accessible via ngrok!"
-
-echo "Waiting for Rancher to be accessible via ngrok (https://$RANCHER_HOSTNAME)..."
-RETRY_COUNT=0
-until [ "$(curl -s -o /dev/null -w "%{http_code}" https://$RANCHER_HOSTNAME)" = "200" ] || [ "$(curl -s -o /dev/null -w "%{http_code}" https://$RANCHER_HOSTNAME)" = "302" ]; do 
-    RETRY_COUNT=$((RETRY_COUNT+1))
-    if [ $RETRY_COUNT -gt $MAX_RETRIES ]; then
-        echo "ERROR: Rancher not accessible via ngrok after $MAX_RETRIES attempts"
-        echo "ngrok logs:"
-        cat /tmp/ngrok-turtles-dev.log
-        exit 1
-    fi
-    echo "Waiting for rancher via ngrok (attempt $RETRY_COUNT/$MAX_RETRIES)..."
-    sleep 2
-done
-echo "Rancher is accessible via ngrok!"
+echo "Rancher is accessible!"
 
 # Now setup Gitea repo and push charts
-curl -X POST "https://gitea:$GITEA_PASSWORD@gitea.$RANCHER_HOSTNAME/api/v1/user/repos" \
+curl -X POST "https://gitea:$GITEA_PASSWORD@${GITEA_HOSTNAME}/api/v1/user/repos" \
     -H 'Accept: application/json' \
     -H 'Content-Type: application/json' \
     -d '{"name":"charts"}'
 
-git -C $RANCHER_CHARTS_REPO_DIR remote add fork https://gitea:$GITEA_PASSWORD@gitea.$RANCHER_HOSTNAME/gitea/charts.git
-
-# These git config are needed to make the push work fine through ngrok tunnel
-git -C $RANCHER_CHARTS_REPO_DIR config http.postBuffer 1048576000  # 1 GB
-git -C $RANCHER_CHARTS_REPO_DIR config http.lowSpeedLimit 0
-git -C $RANCHER_CHARTS_REPO_DIR config http.lowSpeedTime 999999
-git -C $RANCHER_CHARTS_REPO_DIR config http.version HTTP/1.1
-git -C $RANCHER_CHARTS_REPO_DIR config pack.windowMemory 256m
-git -C $RANCHER_CHARTS_REPO_DIR config pack.packSizeLimit 256m
-git -C $RANCHER_CHARTS_REPO_DIR config pack.threads 1
+git -C $RANCHER_CHARTS_REPO_DIR remote add fork https://gitea:$GITEA_PASSWORD@${GITEA_HOSTNAME}/gitea/charts.git
 
 echo "Pushing charts repository to Gitea (this may take several minutes)..."
 PUSH_RETRIES=3
 PUSH_COUNT=0
 while [ $PUSH_COUNT -lt $PUSH_RETRIES ]; do
-    PUSH_COUNT=$((PUSH_COUNT+1))
+    PUSH_COUNT=$((PUSH_COUNT + 1))
     echo "Push attempt $PUSH_COUNT/$PUSH_RETRIES..."
-    
+
     if git -C $RANCHER_CHARTS_REPO_DIR push fork --force 2>&1 | tee /tmp/git-push.log; then
         echo "Successfully pushed charts repository!"
         break
