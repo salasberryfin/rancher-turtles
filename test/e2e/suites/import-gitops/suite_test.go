@@ -68,6 +68,7 @@ var _ = SynchronizedBeforeSuite(
 			CustomIngress:             e2e.NginxIngress,
 			CustomIngressLoadBalancer: e2e.NginxIngressLoadBalancer,
 			DefaultIngressClassPatch:  e2e.IngressClassPatch,
+			NewtValuesFile:            e2e.NewtValues,
 		})
 
 		rancherHookResult := testenv.DeployRancher(ctx, testenv.DeployRancherInput{

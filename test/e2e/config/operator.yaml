@@ -120,6 +120,14 @@ variables:
   NGROK_API_KEY: ""
   NGROK_AUTHTOKEN: ""
 
+  # Pangolin/Newt Configuration
+  NEWT_REPO_NAME: "fossorial"
+  NEWT_URL: "https://charts.fossorial.io"
+  NEWT_PATH: "fossorial/newt"
+  PANGOLIN_ENDPOINT: ""
+  NEWT_ID: ""
+  NEWT_SECRET: ""
+
   # Gitea Configuration
   GITEA_REPO_NAME: "gitea-charts"
   GITEA_REPO_URL: "https://dl.gitea.com/charts/"

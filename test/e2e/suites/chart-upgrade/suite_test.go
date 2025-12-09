@@ -90,6 +90,7 @@ var _ = SynchronizedBeforeSuite(
 			BootstrapClusterProxy:    setupClusterResult.BootstrapClusterProxy,
 			CustomIngress:            e2e.NginxIngress,
 			DefaultIngressClassPatch: e2e.IngressClassPatch,
+			NewtValuesFile:           e2e.NewtValues,
 		})
 
 		By("Deploying Gitea for chart repository")

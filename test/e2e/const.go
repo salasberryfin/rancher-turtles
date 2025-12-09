@@ -57,6 +57,12 @@ var (
 	//go:embed data/rancher/ingress.yaml
 	IngressConfig []byte
 
+	//go:embed data/newt/values.yaml
+	NewtValues []byte
+
+	//go:embed data/newt/credentials.yaml
+	NewtCredentialsSecret []byte
+
 	//go:embed data/rancher/system-store-setting-patch.yaml
 	SystemStoreSettingPatch []byte
 

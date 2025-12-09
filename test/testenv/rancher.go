@@ -110,7 +110,7 @@ type DeployRancherInput struct {
 	Development bool
 
 	// RancherInstallationTimeout is the timeout for Rancher installation.
-	RancherInstallationTimeout string `env:"RANCHER_INSTALLATION_TIMEOUT" envDefault:"5m"`
+	RancherInstallationTimeout string `env:"RANCHER_INSTALLATION_TIMEOUT" envDefault:"10m"`
 
 	// RancherDebug enables the `debug` chart value
 	RancherDebug bool `env:"RANCHER_DEBUG"`
@@ -231,7 +231,7 @@ func DeployRancher(ctx context.Context, input DeployRancherInput) PreRancherInst
 		Hostname:          input.RancherHost,
 	})
 	Expect(err).ToNot(HaveOccurred())
-	err = os.WriteFile(input.HelmExtraValuesPath, yamlExtraValues, 0644)
+	err = os.WriteFile(input.HelmExtraValuesPath, yamlExtraValues, 0o644)
 	Expect(err).ToNot(HaveOccurred())
 
 	By("Installing Rancher")
@@ -382,6 +382,30 @@ type RancherDeployIngressInput struct {
 	// EnvironmentType is the type of the invironment to select ingress to be deployed.
 	EnvironmentType e2e.ManagementClusterEnvironmentType `env:"MANAGEMENT_CLUSTER_ENVIRONMENT"`
 
+	// NewtID is the Newt ID for Pangolin.
+	NewtID string `env:"NEWT_ID"`
+
+	// NewtSecret is the Newt Secret for Pangolin.
+	NewtSecret string `env:"NEWT_SECRET"`
+
+	// PangolinEndpoint is the existing Pangolin endpoint where the services are exposed.
+	PangolinEndpoint string `env:"PANGOLIN_ENDPOINT"`
+
+	// NewtNamespace is the namespace where Newt is deployed.
+	NewtNamespace string `env:"NEWT_NAMESPACE" envDefault:"newt"`
+
+	// NewtPath is the path to Newt.
+	NewtPath string `env:"NEWT_PATH"`
+
+	// NewtRepoName is the name of the Newt repository.
+	NewtRepoName string `env:"NEWT_REPO_NAME"`
+
+	// NewtRepoURL is the URL of the Newt repository.
+	NewtRepoURL string `env:"NEWT_URL"`
+
+	// NewtValuesFile is the file with the values passed to Newt Helm chart.
+	NewtValuesFile []byte
+
 	// NgrokApiKey is the API key for Ngrok.
 	NgrokApiKey string `env:"NGROK_API_KEY"`
 
@@ -425,13 +449,20 @@ func RancherDeployIngress(ctx context.Context, input RancherDeployIngressInput) 
 		Expect(input.CustomIngress).ToNot(BeEmpty(), "CustomIngress is required when using custom ingress")
 		deployIsolatedModeIngress(ctx, input)
 	case e2e.ManagementClusterEnvironmentKind:
-		Expect(input.NgrokApiKey).ToNot(BeEmpty(), "NgrokApiKey is required when using ngrok ingress")
-		Expect(input.NgrokAuthToken).ToNot(BeEmpty(), "NgrokAuthToken is required when using ngrok ingress")
-		Expect(input.NgrokPath).ToNot(BeEmpty(), "NgrokPath is required  when using ngrok ingress")
-		Expect(input.NgrokRepoName).ToNot(BeEmpty(), "NgrokRepoName is required when using ngrok ingress")
-		Expect(input.NgrokRepoURL).ToNot(BeEmpty(), "NgrokRepoURL is required when using ngrok ingress")
+		// Expect(input.NgrokApiKey).ToNot(BeEmpty(), "NgrokApiKey is required when using ngrok ingress")
+		// Expect(input.NgrokAuthToken).ToNot(BeEmpty(), "NgrokAuthToken is required when using ngrok ingress")
+		// Expect(input.NgrokPath).ToNot(BeEmpty(), "NgrokPath is required  when using ngrok ingress")
+		// Expect(input.NgrokRepoName).ToNot(BeEmpty(), "NgrokRepoName is required when using ngrok ingress")
+		// Expect(input.NgrokRepoURL).ToNot(BeEmpty(), "NgrokRepoURL is required when using ngrok ingress")
+		Expect(input.NewtID).ToNot(BeEmpty(), "NewtID is required when using ngrok ingress")
+		Expect(input.NewtSecret).ToNot(BeEmpty(), "NewtSecret is required when using ngrok ingress")
+		Expect(input.NewtPath).ToNot(BeEmpty(), "NewtPath is required  when using ngrok ingress")
+		Expect(input.NewtRepoName).ToNot(BeEmpty(), "NewtRepoName is required when using ngrok ingress")
+		Expect(input.NewtRepoURL).ToNot(BeEmpty(), "NewtRepoURL is required when using ngrok ingress")
 		Expect(input.HelmExtraValuesPath).ToNot(BeNil(), "HelmExtraValuesPath is when using ngrok ingress")
-		deployNgrokIngress(ctx, input)
+		Expect(input.HelmExtraValuesPath).ToNot(BeNil(), "HelmExtraValuesPath is when using ngrok ingress")
+		deployNewt(ctx, input)
+		// deployNgrokIngress(ctx, input)
 	case e2e.ManagementClusterEnvironmentEKS:
 		deployEKSIngress(input)
 	case e2e.ManagementClusterEnvironmentInternalKind:
@@ -487,6 +518,73 @@ func deployEKSIngress(input RancherDeployIngressInput) {
 	Expect(err).ToNot(HaveOccurred())
 }
 
+func deployNewt(ctx context.Context, input RancherDeployIngressInput) {
+	// TODO: install Newt to expose Rancher and Gitea with Pangolin
+	// 1. Required variables:
+	// 	-> PANGOLIN_ENDPOINT, NEWT_ID, NEWT_SECRET
+	// 2. Create Newt namespace
+	// 3. Create Newt secret with credentials
+	// 4. Install Newt chart
+	By("Setting up Newt")
+	addChart := &opframework.HelmChart{
+		BinaryPath:      input.HelmBinaryPath,
+		Name:            input.NewtRepoName,
+		Path:            input.NewtRepoURL,
+		Commands:        opframework.Commands(opframework.Repo, opframework.Add),
+		AdditionalFlags: opframework.Flags("--force-update"),
+		Kubeconfig:      input.BootstrapClusterProxy.GetKubeconfigPath(),
+	}
+	_, err := addChart.Run(nil)
+	Expect(err).ToNot(HaveOccurred())
+
+	updateChart := &opframework.HelmChart{
+		BinaryPath: input.HelmBinaryPath,
+		Commands:   opframework.Commands(opframework.Repo, opframework.Update),
+		Kubeconfig: input.BootstrapClusterProxy.GetKubeconfigPath(),
+	}
+	_, err = updateChart.Run(nil)
+	Expect(err).ToNot(HaveOccurred())
+
+	By("Creating Newt namespace")
+	Expect(turtlesframework.CreateNamespace(ctx, input.BootstrapClusterProxy, input.NewtNamespace)).To(Succeed())
+
+	By("Creating Newt credentials secret")
+	turtlesframework.CreateSecret(ctx, turtlesframework.CreateSecretInput{
+		Creator:   input.BootstrapClusterProxy.GetClient(),
+		Name:      "newt-cred",
+		Namespace: input.NewtNamespace,
+		Type:      corev1.SecretTypeOpaque,
+		Data: map[string]string{
+			"NEWT_ID":           input.NewtID,
+			"NEWT_SECRET":       input.NewtSecret,
+			"PANGOLIN_ENDPOINT": input.PangolinEndpoint,
+		},
+	})
+
+	By("Configuring Newt Helm chart values")
+	installFlags := opframework.Flags(
+		"--namespace", input.NewtNamespace,
+		"--timeout", "5m",
+	)
+
+	newtValues, err := os.CreateTemp("", "newt-values.yaml")
+	Expect(err).NotTo(HaveOccurred(), "Failed to create temp file for Newt values")
+	Expect(os.WriteFile(newtValues.Name(), input.NewtValuesFile, os.ModePerm)).To(Succeed(), "Failed to write gitea values to tmp file")
+	installFlags = append(installFlags, "-f", newtValues.Name())
+
+	By("Installing Newt Helm chart")
+	installChart := &opframework.HelmChart{
+		BinaryPath:      input.HelmBinaryPath,
+		Name:            "newt",
+		Path:            input.NewtPath,
+		Kubeconfig:      input.BootstrapClusterProxy.GetKubeconfigPath(),
+		Wait:            true,
+		AdditionalFlags: installFlags,
+	}
+	_, err = installChart.Run(nil)
+	Expect(err).ToNot(HaveOccurred())
+}
+
 func deployNgrokIngress(ctx context.Context, input RancherDeployIngressInput) {
 	By("Setting up ngrok-ingress-controller")
 	addChart := &opframework.HelmChart{
@@ -515,7 +613,7 @@ func deployNgrokIngress(ctx context.Context, input RancherDeployIngressInput) {
 		},
 	})
 	Expect(err).ToNot(HaveOccurred())
-	err = os.WriteFile(input.HelmExtraValuesPath, yamlExtraValues, 0644)
+	err = os.WriteFile(input.HelmExtraValuesPath, yamlExtraValues, 0o644)
 	Expect(err).ToNot(HaveOccurred())
 
 	installFlags := opframework.Flags(

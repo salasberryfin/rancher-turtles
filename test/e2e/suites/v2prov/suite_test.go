@@ -72,6 +72,7 @@ var _ = SynchronizedBeforeSuite(
 			BootstrapClusterProxy:    setupClusterResult.BootstrapClusterProxy,
 			CustomIngress:            e2e.NginxIngress,
 			DefaultIngressClassPatch: e2e.IngressClassPatch,
+			NewtValuesFile:           e2e.NewtValues,
 		})
 
 		rancherHookResult := testenv.DeployRancher(ctx, testenv.DeployRancherInput{
