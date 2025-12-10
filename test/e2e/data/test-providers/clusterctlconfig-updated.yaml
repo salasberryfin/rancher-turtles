@@ -8,6 +8,11 @@ spec:
   - name: vsphere
     url: https://github.com/kubernetes-sigs/cluster-api-provider-vsphere/releases/v1.13.0/infrastructure-components.yaml
     type: InfrastructureProvider
+  - name: cluster-api
+    url: https://github.com/kubernetes-sigs/cluster-api/releases/v1.10.7/core-components.yaml
+    type: CoreProvider
   images:
   - name: infrastructure-vsphere
     repository: registry.k8s.io/cluster-api-vsphere
+  - name: core-cluster-api
+    repository: "gcr.io/k8s-staging-cluster-api"

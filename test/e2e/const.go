@@ -182,7 +182,8 @@ const (
 	TurtlesProvidersUrlVar      = "TURTLES_PROVIDERS_URL"
 	TurtlesProvidersPathVar     = "TURTLES_PROVIDERS_PATH"
 
-	RKE2VersionVar = "RKE2_VERSION"
+	RKE2VersionVar     = "RKE2_VERSION"
+	CoreCapiVersionVar = "CORE_CAPI_VERSION"
 
 	AzureSubIDVar        = "AZURE_SUBSCRIPTION_ID"
 	AzureClientIDVar     = "AZURE_CLIENT_ID"

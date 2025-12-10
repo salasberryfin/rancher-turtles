@@ -42,6 +42,7 @@ variables:
   KUBERNETES_MANAGEMENT_VERSION: "v1.34.0" # Depends on kindest/node for kind environments.
   RKE2_VERSION: "v1.34.1+rke2r1"
   RKE2_CNI: "none"
+  CORE_CAPI_VERSION: "v1.10.6"
 
   # Azure Configuration
   #
