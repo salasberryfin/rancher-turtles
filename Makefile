@@ -143,8 +143,8 @@ GO_APIDIFF := $(abspath $(TOOLS_BIN_DIR)/$(GO_APIDIFF_BIN)-$(GO_APIDIFF_VER))
 GO_APIDIFF_PKG := github.com/joelanford/go-apidiff
 
 GINKGO_BIN := ginkgo
-GINGKO_VER := $(call get_go_version,github.com/onsi/ginkgo/v2)
-GINKGO := $(abspath $(TOOLS_BIN_DIR)/$(GINKGO_BIN)-$(GINGKO_VER))
+GINKGO_VER := $(call get_go_version,github.com/onsi/ginkgo/v2)
+GINKGO := $(abspath $(TOOLS_BIN_DIR)/$(GINKGO_BIN)-$(GINKGO_VER))
 GINKGO_PKG := github.com/onsi/ginkgo/v2/ginkgo
 
 UPDATECLI_BIN := updatecli
@@ -522,7 +522,7 @@ $(SETUP_ENVTEST): # Build setup-envtest from tools folder.
 
 $(GINKGO): # Build ginkgo from tools folder.
 	@if [ ! -f $(GINKGO) ]; then \
-		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINGKO_VER); \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINKGO_VER); \
 	fi
 
 $(UPDATECLI): # Install updatecli
