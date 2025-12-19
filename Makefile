@@ -266,18 +266,21 @@ generate-go-deepcopy:  ## Run deepcopy generation
 		object:headerFile=./hack/boilerplate.go.txt \
 		paths=./api/... 
 
-# Run go mod
+# Run go mod - optimized to skip if already up to date
 .PHONY: vendor
 vendor:
-	go mod tidy
-	go mod vendor
-	go mod verify
+	@if [ ! -d vendor ] || [ go.mod -nt vendor ] || [ go.sum -nt vendor ]; then \
+		echo "Updating vendor directory..."; \
+		go mod tidy && go mod vendor && go mod verify; \
+	else \
+		echo "Vendor directory is up to date"; \
+	fi
 
 .PHONY: vendor-clean
 vendor-clean:
 	rm -rf vendor
 
-.PHOHY: dev-env
+.PHONY: dev-env
 dev-env: build-local-rancher-charts ## Create a local development environment
 	./scripts/turtles-dev.sh ${RANCHER_HOSTNAME}
 
@@ -338,6 +341,7 @@ build-community: ## Build with community tag
 run: generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
+.PHONY: buildx-machine
 buildx-machine:
 	@docker buildx inspect $(MACHINE) || \
 		docker buildx create --name=$(MACHINE) --platform=$(TARGET_PLATFORMS)
@@ -398,6 +402,7 @@ docker-build-and-push-prime:
 docker-build-and-push-community:
 	$(MAKE) docker-build-and-push TARGET_BUILD=community
 
+.PHONY: docker-list-all
 docker-list-all:
 	@echo $(CONTROLLER_IMG):${TAG}
 
@@ -482,64 +487,93 @@ $(SETUP_ENVTEST_BIN): $(SETUP_ENVTEST) ## Build a local copy of setup-envtest.
 $(GOLANGCI_LINT_BIN): $(GOLANGCI_LINT) ## Build a local copy of golangci-lint
 
 $(CONTROLLER_GEN): # Build controller-gen from tools folder.
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(CONTROLLER_GEN_PKG) $(CONTROLLER_GEN_BIN) $(CONTROLLER_GEN_VER)
+	@if [ ! -f $(CONTROLLER_GEN) ]; then \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(CONTROLLER_GEN_PKG) $(CONTROLLER_GEN_BIN) $(CONTROLLER_GEN_VER); \
+	fi
 
 .PHONY: $(CONVERSION_GEN)
 $(CONVERSION_GEN): # Build conversion-gen from tools folder.
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(CONVERSION_GEN_PKG) $(CONVERSION_GEN_BIN) $(CONVERSION_GEN_VER)
+	@if [ ! -f $(CONVERSION_GEN) ]; then \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(CONVERSION_GEN_PKG) $(CONVERSION_GEN_BIN) $(CONVERSION_GEN_VER); \
+	fi
 
 .PHONY: $(GINKGO_BIN)
 $(GINKGO_BIN): $(GINKGO) ## Build a local copy of ginkgo.
 
 $(GO_APIDIFF): # Build go-apidiff from tools folder.
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GO_APIDIFF_PKG) $(GO_APIDIFF_BIN) $(GO_APIDIFF_VER)
+	@if [ ! -f $(GO_APIDIFF) ]; then \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GO_APIDIFF_PKG) $(GO_APIDIFF_BIN) $(GO_APIDIFF_VER); \
+	fi
 
 $(ENVSUBST): # Build gotestsum from tools folder.
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(ENVSUBST_PKG) $(ENVSUBST_BIN) $(ENVSUBST_VER)
+	@if [ ! -f $(ENVSUBST) ]; then \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(ENVSUBST_PKG) $(ENVSUBST_BIN) $(ENVSUBST_VER); \
+	fi
 
 $(KUSTOMIZE): # Build kustomize from tools folder.
-	CGO_ENABLED=0 GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(KUSTOMIZE_PKG) $(KUSTOMIZE_BIN) $(KUSTOMIZE_VER)
+	@if [ ! -f $(KUSTOMIZE) ]; then \
+		CGO_ENABLED=0 GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(KUSTOMIZE_PKG) $(KUSTOMIZE_BIN) $(KUSTOMIZE_VER); \
+	fi
 
 $(SETUP_ENVTEST): # Build setup-envtest from tools folder.
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(SETUP_ENVTEST_PKG) $(SETUP_ENVTEST_BIN) $(SETUP_ENVTEST_VER)
+	@if [ ! -f $(SETUP_ENVTEST) ]; then \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(SETUP_ENVTEST_PKG) $(SETUP_ENVTEST_BIN) $(SETUP_ENVTEST_VER); \
+	fi
 
 $(GINKGO): # Build ginkgo from tools folder.
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINGKO_VER)
+	@if [ ! -f $(GINKGO) ]; then \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GINKGO_PKG) $(GINKGO_BIN) $(GINGKO_VER); \
+	fi
 
 $(UPDATECLI): # Install updatecli
-	curl -sSL -o ${TOOLS_BIN_DIR}/updatecli_${GO_ARCH}.tar.gz https://github.com/updatecli/updatecli/releases/download/${UPDATECLI_VER}/updatecli_${UPDATECLI_OS}_${GO_ARCH}.tar.gz
-	cd ${TOOLS_BIN_DIR} && tar -xzf updatecli_${GO_ARCH}.tar.gz
-	cd ${TOOLS_BIN_DIR} && chmod +x updatecli
-	cd ${TOOLS_BIN_DIR} && mv updatecli $(UPDATECLI_BIN)-$(UPDATECLI_VER)
+	@if [ ! -f $(UPDATECLI) ]; then \
+		curl -sSL -o ${TOOLS_BIN_DIR}/updatecli_${GO_ARCH}.tar.gz https://github.com/updatecli/updatecli/releases/download/${UPDATECLI_VER}/updatecli_${UPDATECLI_OS}_${GO_ARCH}.tar.gz && \
+		cd ${TOOLS_BIN_DIR} && tar -xzf updatecli_${GO_ARCH}.tar.gz && \
+		cd ${TOOLS_BIN_DIR} && chmod +x updatecli && \
+		cd ${TOOLS_BIN_DIR} && mv updatecli $(UPDATECLI_BIN)-$(UPDATECLI_VER); \
+	fi
 
 $(GOLANGCI_LINT): # Build golangci-lint from tools folder.
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GOLANGCI_LINT_PKG) $(GOLANGCI_LINT_BIN) $(GOLANGCI_LINT_VER)
+	@if [ ! -f $(GOLANGCI_LINT) ]; then \
+		GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) $(GOLANGCI_LINT_PKG) $(GOLANGCI_LINT_BIN) $(GOLANGCI_LINT_VER); \
+	fi
 
 $(NOTES): # Download and install note generator from cluster-api commit
-	hack/make-release-notes.sh $(TOOLS_BIN_DIR) $(CAPI_VERSION)
+	@if [ ! -f $(NOTES) ]; then \
+		hack/make-release-notes.sh $(TOOLS_BIN_DIR) $(CAPI_VERSION); \
+	fi
 
 $(GH): # Download GitHub cli into the tools bin folder
-	hack/ensure-gh.sh \
-		-b $(TOOLS_BIN_DIR) \
-		$(GH_VERSION)
+	@if [ ! -f $(GH) ]; then \
+		hack/ensure-gh.sh \
+			-b $(TOOLS_BIN_DIR) \
+			$(GH_VERSION); \
+	fi
 
+.PHONY: kubectl
 kubectl: # Download kubectl cli into tools bin folder
-	hack/ensure-kubectl.sh \
-		-b $(TOOLS_BIN_DIR) \
-		$(KUBECTL_VERSION)
+	@if [ ! -f $(TOOLS_BIN_DIR)/kubectl ]; then \
+		hack/ensure-kubectl.sh \
+			-b $(TOOLS_BIN_DIR) \
+			$(KUBECTL_VERSION); \
+	fi
 
 $(HELM): ## Put helm into tools folder.
-	mkdir -p $(TOOLS_BIN_DIR)
-	rm -f "$(TOOLS_BIN_DIR)/$(HELM_BIN)*"
-	curl --retry $(CURL_RETRIES) -fsSL -o $(TOOLS_BIN_DIR)/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-	chmod 700 $(TOOLS_BIN_DIR)/get_helm.sh
-	USE_SUDO=false HELM_INSTALL_DIR=$(TOOLS_BIN_DIR) DESIRED_VERSION=$(HELM_VER) BINARY_NAME=$(HELM_BIN)-$(HELM_VER) $(TOOLS_BIN_DIR)/get_helm.sh
-	ln -sf $(HELM) $(TOOLS_BIN_DIR)/$(HELM_BIN)
-	rm -f $(TOOLS_BIN_DIR)/get_helm.sh
+	@if [ ! -f $(HELM) ]; then \
+		mkdir -p $(TOOLS_BIN_DIR) && \
+		rm -f "$(TOOLS_BIN_DIR)/$(HELM_BIN)*" && \
+		curl --retry $(CURL_RETRIES) -fsSL -o $(TOOLS_BIN_DIR)/get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 && \
+		chmod 700 $(TOOLS_BIN_DIR)/get_helm.sh && \
+		USE_SUDO=false HELM_INSTALL_DIR=$(TOOLS_BIN_DIR) DESIRED_VERSION=$(HELM_VER) BINARY_NAME=$(HELM_BIN)-$(HELM_VER) $(TOOLS_BIN_DIR)/get_helm.sh && \
+		ln -sf $(HELM) $(TOOLS_BIN_DIR)/$(HELM_BIN) && \
+		rm -f $(TOOLS_BIN_DIR)/get_helm.sh; \
+	fi
 
 $(CLUSTERCTL): $(TOOLS_BIN_DIR) ## Download and install clusterctl
-	curl --retry $(CURL_RETRIES) -fsSL -o $(CLUSTERCTL) https://github.com/kubernetes-sigs/cluster-api/releases/download/$(CLUSTERCTL_VER)/clusterctl-linux-amd64
-	chmod +x $(CLUSTERCTL) 
+	@if [ ! -f $(CLUSTERCTL) ]; then \
+		curl --retry $(CURL_RETRIES) -fsSL -o $(CLUSTERCTL) https://github.com/kubernetes-sigs/cluster-api/releases/download/$(CLUSTERCTL_VER)/clusterctl-linux-amd64 && \
+		chmod +x $(CLUSTERCTL); \
+	fi 
 
 ## --------------------------------------
 ## Release
@@ -663,7 +697,7 @@ e2e-image-build: ## Build the image for e2e tests
 e2e-image-push: ## Push the image for e2e tests
 	docker push $(CONTROLLER_IMG):$(TAG)
 
-.PHONY: compile-e2e
+.PHONY: e2e-compile
 e2e-compile: ## Test e2e compilation
 	go test -c -o /dev/null -tags=e2e ./test/e2e/suites/***
 
@@ -690,6 +724,6 @@ verify-doctoc: generate-doctoc
 clean-release: ## Remove the release folder
 	rm -rf $(RELEASE_DIR)
 
-.PHOHY: clean-dev-env
+.PHONY: clean-dev-env
 clean-dev-env: ## Remove the dev env
 	kind delete cluster --name=$(CLUSTER_NAME)

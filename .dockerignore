@@ -42,3 +42,16 @@ go.work*
 
 # Ignore the buildx cache directory
 .buildx-cache/
+
+# Ignore additional build and test artifacts
+**/vendor/
+*.log
+coverage.txt
+coverage.html
+
+# Ignore IDE and editor directories
+.idea/
+*.iml
+.venv/
+venv/
+__pycache__/
