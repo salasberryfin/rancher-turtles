@@ -106,7 +106,8 @@ type AdaptiveWaitConfig struct {
 
 func AdaptiveWait(ctx context.Context, config AdaptiveWaitConfig, condition func() bool) error {
     interval := config.InitialInterval
-    deadline := time.Now().Add(config.Timeout)
+    startTime := time.Now()
+    deadline := startTime.Add(config.Timeout)
     
     for time.Now().Before(deadline) {
         if condition() {
@@ -114,7 +115,7 @@ func AdaptiveWait(ctx context.Context, config AdaptiveWaitConfig, condition func
         }
         
         // Use shorter intervals as we approach expected completion
-        elapsed := time.Since(time.Now())
+        elapsed := time.Since(startTime)
         if elapsed > config.Timeout/2 {
             interval = config.InitialInterval // Reset to faster polling
         }
@@ -142,7 +143,8 @@ func AdaptiveWait(ctx context.Context, config AdaptiveWaitConfig, condition func
 ```go
 // test/framework/failure_detection.go
 func WaitForClusterWithFailureDetection(ctx context.Context, input WaitInput) error {
-    return Eventually(func() (bool, error) {
+    var lastErr error
+    err := Eventually(func() (bool, error) {
         cluster := &clusterv1.Cluster{}
         if err := client.Get(ctx, input.ClusterKey, cluster); err != nil {
             return false, nil // Keep waiting
@@ -153,12 +155,18 @@ func WaitForClusterWithFailureDetection(ctx context.Context, input WaitInput) er
             if condition.Type == clusterv1.ReadyCondition && 
                condition.Status == corev1.ConditionFalse &&
                isUnrecoverableReason(condition.Reason) {
-                return false, fmt.Errorf("unrecoverable failure: %s", condition.Message)
+                lastErr = fmt.Errorf("unrecoverable failure: %s", condition.Message)
+                return false, lastErr
             }
         }
         
         return cluster.Status.Ready, nil
     }, input.Timeout, input.Interval).Should(BeTrue())
+    
+    if err != nil && lastErr != nil {
+        return lastErr
+    }
+    return err
 }
 ```
 
