@@ -124,7 +124,11 @@ func (l *TestLogger) logWithContext(level, message string, elapsed time.Duration
 		Test:      l.testName,
 		Elapsed:   elapsed.String(),
 		Message:   message,
-		Context:   l.context,
+	}
+
+	// Only include context if it's not empty to reduce log noise
+	if len(l.context) > 0 {
+		logEntry.Context = l.context
 	}
 
 	jsonBytes, err := json.Marshal(logEntry)

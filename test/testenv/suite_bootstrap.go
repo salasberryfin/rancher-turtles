@@ -206,52 +206,59 @@ func SetupSuite(ctx context.Context, config *SuiteConfig) *SuiteSetupResult {
 	}
 
 	// Deploy Rancher if needed
-	if config.NeedsRancher && result.GiteaResult != nil && result.ChartsResult != nil {
-		result.Logger.Step("Installing Rancher with Gitea chart repository")
-		rancherHookResult := UpgradeInstallRancherWithGitea(ctx, UpgradeInstallRancherWithGiteaInput{
-			BootstrapClusterProxy: result.ClusterResult.BootstrapClusterProxy,
-			ChartRepoURL:          result.ChartsResult.ChartRepoHTTPURL,
-			ChartRepoBranch:       result.ChartsResult.Branch,
-			ChartVersion:          result.ChartsResult.ChartVersion,
-			TurtlesImageRepo:      "ghcr.io/rancher/turtles-e2e",
-			TurtlesImageTag:       "v0.0.1",
-			RancherWaitInterval:   e2eConfig.GetIntervals(result.ClusterResult.BootstrapClusterProxy.GetName(), "wait-rancher"),
-			RancherPatches:        config.RancherPatches,
-		})
-		result.RancherHostname = rancherHookResult.Hostname
+	// Note: This setup uses Gitea-based chart deployment (UpgradeInstallRancherWithGitea).
+	// For Rancher deployment without Gitea, use CustomSetup or a different suite configuration.
+	if config.NeedsRancher {
+		if result.GiteaResult == nil || result.ChartsResult == nil {
+			// If Rancher is needed but Gitea/Charts are not configured, skip with a warning
+			result.Logger.Info("Skipping Rancher deployment: NeedsRancher=true but NeedsGitea=false or charts not pushed")
+		} else {
+			result.Logger.Step("Installing Rancher with Gitea chart repository")
+			rancherHookResult := UpgradeInstallRancherWithGitea(ctx, UpgradeInstallRancherWithGiteaInput{
+				BootstrapClusterProxy: result.ClusterResult.BootstrapClusterProxy,
+				ChartRepoURL:          result.ChartsResult.ChartRepoHTTPURL,
+				ChartRepoBranch:       result.ChartsResult.Branch,
+				ChartVersion:          result.ChartsResult.ChartVersion,
+				TurtlesImageRepo:      "ghcr.io/rancher/turtles-e2e",
+				TurtlesImageTag:       "v0.0.1",
+				RancherWaitInterval:   e2eConfig.GetIntervals(result.ClusterResult.BootstrapClusterProxy.GetName(), "wait-rancher"),
+				RancherPatches:        config.RancherPatches,
+			})
+			result.RancherHostname = rancherHookResult.Hostname
 
-		result.Logger.Step("Waiting for Rancher to be ready")
-		framework.WaitForDeploymentsAvailable(ctx, framework.WaitForDeploymentsAvailableInput{
-			Getter: result.ClusterResult.BootstrapClusterProxy.GetClient(),
-			Deployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
-				Name:      "rancher",
-				Namespace: e2e.RancherNamespace,
-			}},
-		}, e2eConfig.GetIntervals(result.ClusterResult.BootstrapClusterProxy.GetName(), "wait-rancher")...)
-
-		// Wait for Turtles if deployed via system charts
-		if config.NeedsTurtles {
-			result.Logger.Step("Waiting for Turtles controller to be installed by system chart controller")
+			result.Logger.Step("Waiting for Rancher to be ready")
 			framework.WaitForDeploymentsAvailable(ctx, framework.WaitForDeploymentsAvailableInput{
 				Getter: result.ClusterResult.BootstrapClusterProxy.GetClient(),
 				Deployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
-					Name:      "rancher-turtles-controller-manager",
-					Namespace: e2e.NewRancherTurtlesNamespace,
+					Name:      "rancher",
+					Namespace: e2e.RancherNamespace,
 				}},
-			}, e2eConfig.GetIntervals(result.ClusterResult.BootstrapClusterProxy.GetName(), "wait-controllers")...)
+			}, e2eConfig.GetIntervals(result.ClusterResult.BootstrapClusterProxy.GetName(), "wait-rancher")...)
 
-			result.Logger.Step("Applying test ClusterctlConfig")
-			Expect(turtlesframework.Apply(ctx, result.ClusterResult.BootstrapClusterProxy, e2e.ClusterctlConfig)).To(Succeed())
-		}
+			// Wait for Turtles if deployed via system charts
+			if config.NeedsTurtles {
+				result.Logger.Step("Waiting for Turtles controller to be installed by system chart controller")
+				framework.WaitForDeploymentsAvailable(ctx, framework.WaitForDeploymentsAvailableInput{
+					Getter: result.ClusterResult.BootstrapClusterProxy.GetClient(),
+					Deployment: &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+						Name:      "rancher-turtles-controller-manager",
+						Namespace: e2e.NewRancherTurtlesNamespace,
+					}},
+				}, e2eConfig.GetIntervals(result.ClusterResult.BootstrapClusterProxy.GetName(), "wait-controllers")...)
 
-		// Deploy Turtles providers if needed
-		if config.NeedsTurtlesProviders {
-			result.Logger.Step("Deploying Rancher Turtles providers")
-			DeployRancherTurtlesProviders(ctx, DeployRancherTurtlesProvidersInput{
-				BootstrapClusterProxy:   result.ClusterResult.BootstrapClusterProxy,
-				UseLegacyCAPINamespace:  config.UseLegacyCAPINamespace,
-				RancherTurtlesNamespace: e2e.NewRancherTurtlesNamespace,
-			})
+				result.Logger.Step("Applying test ClusterctlConfig")
+				Expect(turtlesframework.Apply(ctx, result.ClusterResult.BootstrapClusterProxy, e2e.ClusterctlConfig)).To(Succeed())
+			}
+
+			// Deploy Turtles providers if needed
+			if config.NeedsTurtlesProviders {
+				result.Logger.Step("Deploying Rancher Turtles providers")
+				DeployRancherTurtlesProviders(ctx, DeployRancherTurtlesProvidersInput{
+					BootstrapClusterProxy:   result.ClusterResult.BootstrapClusterProxy,
+					UseLegacyCAPINamespace:  config.UseLegacyCAPINamespace,
+					RancherTurtlesNamespace: e2e.NewRancherTurtlesNamespace,
+				})
+			}
 		}
 	}
 
