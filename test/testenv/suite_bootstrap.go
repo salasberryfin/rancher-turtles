@@ -34,7 +34,8 @@ import (
 
 const (
 	// ChartUpgradeKubernetesVersion is the Kubernetes version required for chart-upgrade tests
-	// to maintain compatibility with Rancher 2.12.x which requires Kubernetes < v1.34.0
+	// to maintain compatibility with Rancher 2.12.x and avoid issues with CAAPF on v1.33.x.
+	// See: test/e2e/suites/chart-upgrade/suite_test.go
 	ChartUpgradeKubernetesVersion = "v1.32.0"
 )
 
@@ -211,7 +212,7 @@ func SetupSuite(ctx context.Context, config *SuiteConfig) *SuiteSetupResult {
 	if config.NeedsRancher {
 		if result.GiteaResult == nil || result.ChartsResult == nil {
 			// If Rancher is needed but Gitea/Charts are not configured, skip with a warning
-			result.Logger.Info("Skipping Rancher deployment: NeedsRancher=true but NeedsGitea=false or charts not pushed")
+			result.Logger.Info("Skipping Rancher deployment: requires Gitea chart repository but Gitea is not deployed or charts failed to push")
 		} else {
 			result.Logger.Step("Installing Rancher with Gitea chart repository")
 			rancherHookResult := UpgradeInstallRancherWithGitea(ctx, UpgradeInstallRancherWithGiteaInput{
