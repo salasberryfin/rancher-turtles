@@ -26,9 +26,16 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cluster-api/test/framework"
+	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 
 	"github.com/rancher/turtles/test/e2e"
 	turtlesframework "github.com/rancher/turtles/test/framework"
+)
+
+const (
+	// ChartUpgradeKubernetesVersion is the Kubernetes version required for chart-upgrade tests
+	// to maintain compatibility with Rancher 2.12.x which requires Kubernetes < v1.34.0
+	ChartUpgradeKubernetesVersion = "v1.32.0"
 )
 
 // SuiteConfig defines the configuration for setting up a test suite.
@@ -86,7 +93,7 @@ type SuiteSetupResult struct {
 	RancherHostname string
 
 	// E2EConfig is the E2E configuration used for this suite
-	E2EConfig interface{}
+	E2EConfig *clusterctl.E2EConfig
 
 	// Logger is the structured logger for this suite
 	Logger *turtlesframework.TestLogger
@@ -126,7 +133,7 @@ func ChartUpgradeSuiteConfig() *SuiteConfig {
 	config.NeedsRancher = false // chart-upgrade tests install Rancher with specific versions
 	config.NeedsTurtles = false
 	config.NeedsTurtlesProviders = false
-	config.KubernetesVersion = "v1.32.0" // Required for Rancher 2.12.x compatibility
+	config.KubernetesVersion = ChartUpgradeKubernetesVersion
 	return config
 }
 
