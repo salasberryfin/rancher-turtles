@@ -25,6 +25,14 @@ ARG goproxy=https://proxy.golang.org
 # Run this with docker build --build-arg package=./controlplane or --build-arg package=./bootstrap
 ENV GOPROXY=$goproxy
 
+# Copy go mod files first for better layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies in a separate layer for better caching
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+# Copy source code
 COPY ./ ./
 
 # Build
@@ -33,8 +41,9 @@ ARG ldflags
 ARG go_build_tags=""
 ARG TARGETOS TARGETARCH
 
-# Do not force rebuild of up-to-date packages (do not use -a) and use the compiler cache folder
+# Do not force rebuild of up-to-date packages (do not use -a) and use the compiler and build cache
 RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -tags "${go_build_tags}" -ldflags "${ldflags} -extldflags '-static'" \
     -o manager ${package}
