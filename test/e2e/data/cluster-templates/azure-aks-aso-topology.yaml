@@ -1,0 +1,30 @@
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: "${NAMESPACE}"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - 192.168.0.0/16
+  topology:
+    classRef:
+      name: azure-aks-aso-example
+      namespace: ${TOPOLOGY_NAMESPACE}
+    variables:
+      - name: location
+        value: germanywestcentral
+      - name: resourceGroup
+        value: highlander-e2e-azure-aks
+      - name: asoCredentialSecretName
+        value: ${ASO_CREDENTIAL_SECRET_NAME}
+    version: ${AZURE_AKS_KUBERNETES_VERSION}
+    workers:
+      machinePools:
+        - class: default-system
+          name: system-1
+          replicas: 1
+        - class: default-worker
+          name: worker-1
+          replicas: 1
