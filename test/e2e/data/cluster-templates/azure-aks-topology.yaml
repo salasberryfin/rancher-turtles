@@ -1,21 +1,3 @@
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: AzureClusterIdentity
-metadata:
-  annotations:
-    "helm.sh/resource-policy": keep
-  labels:
-    clusterctl.cluster.x-k8s.io/move-hierarchy: "true"
-  name: cluster-identity
-  namespace: "${NAMESPACE}"
-spec:
-  allowedNamespaces: {}
-  clientID: ${AZURE_CLIENT_ID}
-  clientSecret:
-    name: cluster-identity-secret
-    namespace: capz-system
-  tenantID: ${AZURE_TENANT_ID}
-  type: ServicePrincipal
----
 apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
@@ -31,14 +13,12 @@ spec:
       name: azure-aks-example
       namespace: ${TOPOLOGY_NAMESPACE}
     variables:
-      - name: subscriptionID
-        value: ${AZURE_SUBSCRIPTION_ID}
       - name: location
         value: germanywestcentral
       - name: resourceGroup
         value: highlander-e2e-azure-aks
-      - name: azureClusterIdentityName
-        value: cluster-identity
+      - name: asoCredentialSecretName
+        value: ${ASO_CREDENTIAL_SECRET_NAME}
     version: ${AZURE_AKS_KUBERNETES_VERSION}
     workers:
       machinePools:
