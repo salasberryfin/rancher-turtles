@@ -66,9 +66,9 @@ spec:
       required: true
       schema:
         openAPIV3Schema:
-          description: "The ASO credential secret name used to authenticate with Azure."
+          description: "The ASO credential secret reference used to authenticate with Azure. Use 'name' for a secret in the same namespace, or 'namespace/name' for a cross-namespace reference."
           type: string
-          default: "aso-credential"
+          default: "capz-system/aso-credential"
     - name: autoUpgradeChannel
       required: true
       schema:

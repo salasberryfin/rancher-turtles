@@ -411,6 +411,11 @@ func applyProviderSecrets(ctx context.Context, input DeployRancherTurtlesProvide
 				Proxy:    input.BootstrapClusterProxy,
 				Template: e2e.AzureIdentitySecret,
 			})).To(Succeed(), "Failed to apply Azure provider secret")
+			By("Applying ASO credential secret")
+			Expect(turtlesframework.ApplyFromTemplate(ctx, turtlesframework.ApplyFromTemplateInput{
+				Proxy:    input.BootstrapClusterProxy,
+				Template: e2e.ASOAzureCredentialSecret,
+			})).To(Succeed(), "Failed to apply ASO credential secret")
 		case providerAWS:
 			By("Applying AWS provider secret")
 			Expect(turtlesframework.ApplyFromTemplate(ctx, turtlesframework.ApplyFromTemplateInput{
