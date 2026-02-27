@@ -70,8 +70,8 @@ variables:
   # For AKS available versions, run: az aks get-versions --location westeurope
   AZURE_AKS_KUBERNETES_VERSION: "v1.34.2"
   # Name of the Kubernetes Secret used by ASO to authenticate with Azure.
-  # Supports 'name' (same namespace) or 'namespace/name' (cross-namespace) format.
-  ASO_CREDENTIAL_SECRET_NAME: "default/aso-credential"
+  # The secret must exist in the same namespace as the cluster.
+  ASO_CREDENTIAL_SECRET_NAME: "aso-credential"
 
   # AWS Configuration
   #

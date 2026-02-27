@@ -66,9 +66,9 @@ spec:
       required: true
       schema:
         openAPIV3Schema:
-          description: "The ASO credential secret reference used to authenticate with Azure. Use 'name' for a secret in the same namespace, or 'namespace/name' for a cross-namespace reference."
+          description: "The name of the ASO credential secret used to authenticate with Azure. The secret must exist in the same namespace as the Cluster."
           type: string
-          default: "default/aso-credential"
+          default: "aso-credential"
     - name: autoUpgradeChannel
       required: true
       schema:

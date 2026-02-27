@@ -48,9 +48,6 @@ var (
 	//go:embed data/capi-operator/capz-identity-secret.yaml
 	AzureIdentitySecret []byte
 
-	//go:embed data/capi-operator/aso-credential-secret.yaml
-	ASOAzureCredentialSecret []byte
-
 	//go:embed data/capi-operator/capg-variables.yaml
 	GCPProviderSecret []byte
 
