@@ -203,6 +203,8 @@ func CreateUsingGitOpsSpec(ctx context.Context, inputGetter func() CreateUsingGi
 				"--insecure-skip-tls-verify",
 			},
 		}, rancherConnectRes)
+		log.FromContext(ctx).Info("kubectl stdout", "output", rancherConnectRes.Stdout)
+		log.FromContext(ctx).Info("kubectl stderr", "output", rancherConnectRes.Stderr)
 		Expect(rancherConnectRes.Error).NotTo(HaveOccurred(), "Failed getting nodes with Rancher Kubeconfig")
 		Expect(rancherConnectRes.ExitCode).To(Equal(0), "Getting nodes return non-zero exit code")
 	}
@@ -550,6 +552,8 @@ func CreateUsingGitOpsV1Beta1Spec(ctx context.Context, inputGetter func() Create
 				"--insecure-skip-tls-verify",
 			},
 		}, rancherConnectRes)
+		log.FromContext(ctx).Info("kubectl stdout", "output", rancherConnectRes.Stdout)
+		log.FromContext(ctx).Info("kubectl stderr", "output", rancherConnectRes.Stderr)
 		Expect(rancherConnectRes.Error).NotTo(HaveOccurred(), "Failed getting nodes with Rancher Kubeconfig")
 		Expect(rancherConnectRes.ExitCode).To(Equal(0), "Getting nodes return non-zero exit code")
 	}
