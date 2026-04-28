@@ -32,6 +32,9 @@ MIGRATION_LABEL="migration.fleet.cattle.io/upgrade-2.14=true"
 RANCHER_CAPI_OWNER="cluster-api.cattle.io/capi-cluster-owner"
 RANCHER_CAPI_NS="cluster-api.cattle.io/capi-cluster-owner-ns"
 
+# Finalizers
+CAAPF_FINALIZER="fleet.addons.cluster.x-k8s.io"
+
 # Helper for dry-run
 run_cmd() {
     if [ "$DRY_RUN" = "true" ]; then
@@ -57,15 +60,33 @@ if [ "$PHASE" == "pre" ]; then
         fi
     done
 
-    # 2. Propagate labels to clusters.management.cattle.io
     log "Propagating CAAPF targeting labels to clusters.management.cattle.io..."
-    CAAPF_CLUSTERS=$(kubectl get clusters.fleet.cattle.io -A -l "$CAAPF_CC_LABEL" -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
+    # Get all Fleet clusters that are owned by CAPI clusters.
+    CAPI_OWNED_FLEET_CLUSTERS=$(kubectl get clusters.fleet.cattle.io -A -o json | jq -r '
+        .items[] 
+            | select(any(.metadata.ownerReferences[]?; .kind == "Cluster" and (.apiVersion | startswith("cluster.x-k8s.io")))) 
+            | [
+                .metadata.namespace, 
+                .metadata.name, 
+                (.metadata.ownerReferences[] | select(.kind == "Cluster" and (.apiVersion | startswith("cluster.x-k8s.io"))) | .name)
+              ] 
+            | join("/")
+    ')
 
-    for ITEM in $CAAPF_CLUSTERS; do
+    # For each CAPI cluster, if the `fleet.addons.cluster.x-k8s.io`` finalizer exists, add it to the list. 
+    CAAPF_CLUSTERS=()
+    while IFS='/' read -r NS FLEET_NAME CAPI_NAME; do
+      FINALIZERS=$(kubectl get clusters.cluster.x-k8s.io "$CAPI_NAME" -n "$NS" -o jsonpath='{.metadata.finalizers}' 2>/dev/null || true)
+      if echo "$FINALIZERS" | grep -q "$CAAPF_FINALIZER"; then
+        CAAPF_CLUSTERS+=("$NS/$FLEET_NAME/$CAPI_NAME")
+      fi
+    done <<< "$CAPI_OWNED_FLEET_CLUSTERS"
+
+    for ITEM in "${CAAPF_CLUSTERS[@]}"; do
         OLD_NS=$(echo "$ITEM" | cut -d'/' -f1)
         OLD_NAME=$(echo "$ITEM" | cut -d'/' -f2)
+        CAPI_NAME=$(echo "$ITEM" | cut -d'/' -f3)
 
-        CAPI_NAME=$(kubectl get clusters.fleet.cattle.io "$OLD_NAME" -n "$OLD_NS" -o jsonpath="{.metadata.labels['$CAPI_NAME_LABEL']}")
         CAPI_NS="$OLD_NS"
         if [ -z "$CAPI_NAME" ]; then CAPI_NAME=$OLD_NAME; fi
 
@@ -73,15 +94,16 @@ if [ "$PHASE" == "pre" ]; then
         MGT_CLUSTER_NAME=$(kubectl get clusters.management.cattle.io -l "$RANCHER_CAPI_OWNER=$CAPI_NAME,$RANCHER_CAPI_NS=$CAPI_NS" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 
         if [ -n "$MGT_CLUSTER_NAME" ]; then
-            log "Propagate labels from $OLD_NAME to $MGT_CLUSTER_NAME..."
+            log "Copy labels from $OLD_NAME to $MGT_CLUSTER_NAME..."
 
             # - KEEP: CAPI/CAAPF labels (cluster.x-k8s.io, fleet.addons.cluster.x-k8s.io)
             # - KEEP: Any custom user labels
             # - DROP: Internal system labels (cattle.io, k8s.io, kubernetes.io)
             LABELS_JSON=$(kubectl get clusters.fleet.cattle.io "$OLD_NAME" -n "$OLD_NS" -o json | jq -c '
-                .metadata.labels | with_entries(
-                    select(
-                        (.key | test("cluster\\.x-k8s\\.io|fleet\\.addons\\.cluster\\.x-k8s\\.io"))
+                .metadata.labels 
+                    | with_entries(
+                        select(
+                            (.key | test("cluster\\.x-k8s\\.io|fleet\\.addons\\.cluster\\.x-k8s\\.io"))
                         or (
                             (.key | test("cattle\\.io|k8s\\.io|kubernetes\\.io") | not)
                         )
