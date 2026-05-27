@@ -37,6 +37,10 @@ const (
 
 	// UseCAAPF if enabled Turtles will rely on CAAPF to install CNI and other dependencies on CAPI workload clusters.
 	UseCAAPF featuregate.Feature = "use-caapf"
+
+	// RancherCredentialTranslation if enabled Turtles will translate Rancher Cloud Credentials
+	// into CAPI-specific static identity objects (e.g. AWSClusterStaticIdentity for CAPA).
+	RancherCredentialTranslation featuregate.Feature = "rancher-credential-translation"
 )
 
 func init() {
@@ -50,4 +54,5 @@ var DefaultGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	NoCertManager:             {Default: true, PreRelease: featuregate.Beta},
 	UseRancherDefaultRegistry: {Default: true, PreRelease: featuregate.Beta},
 	UseCAAPF:                  {Default: false, PreRelease: featuregate.Alpha},
+	RancherCredentialTranslation: {Default: false, PreRelease: featuregate.Alpha},
 }
