@@ -21,13 +21,20 @@ package import_gitops
 
 import (
 	"fmt"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
+
 	"github.com/rancher/turtles/test/e2e"
 	"github.com/rancher/turtles/test/e2e/specs"
 	turtlesframework "github.com/rancher/turtles/test/framework"
-	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
+	turtlesannotations "github.com/rancher/turtles/util/annotations"
 )
 
 var _ = Describe("[Docker] [Kubeadm]  Create and delete CAPI cluster functionality should work with namespace auto-import", Label(e2e.ShortTestLabel, e2e.KubeadmTestLabel), func() {
@@ -546,6 +553,93 @@ var _ = Describe("[vSphere] [RKE2] Create and delete CAPI cluster functionality 
 				{
 					Name:            "vsphere-csi",
 					Paths:           []string{"examples/applications/csi/vsphere"},
+					ClusterProxy:    bootstrapClusterProxy,
+					TargetNamespace: topologyNamespace,
+				},
+			},
+		}
+	})
+})
+
+var _ = Describe("[AWS] [EKS] Create and delete CAPI cluster using Rancher Cloud Credential translation", Label(e2e.FullTestLabel), func() {
+	// credentialName is the name of the Rancher Cloud Credential secret created in cattle-global-data.
+	// The credential translation controller will use this same name for the AWSClusterStaticIdentity
+	// and the credentials secret in capa-system.
+	const credentialName = "cc-eks-cred-translation"
+
+	var topologyNamespace string
+
+	BeforeEach(func() {
+		komega.SetClient(bootstrapClusterProxy.GetClient())
+		komega.SetContext(ctx)
+
+		topologyNamespace = "creategitops-aws-eks-credential"
+
+		By("Ensuring cattle-global-data namespace exists")
+		Expect(turtlesframework.CreateNamespace(ctx, bootstrapClusterProxy, "cattle-global-data")).To(Succeed())
+
+		By("Creating Rancher AWS Cloud Credential in cattle-global-data")
+		credential := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      credentialName,
+				Namespace: "cattle-global-data",
+				Annotations: map[string]string{
+					"provisioning.cattle.io/driver": "amazonec2",
+				},
+			},
+			Data: map[string][]byte{
+				"amazonec2credentialConfig-accessKey": []byte(os.Getenv("AWS_ACCESS_KEY_ID")),
+				"amazonec2credentialConfig-secretKey": []byte(os.Getenv("AWS_SECRET_ACCESS_KEY")),
+			},
+		}
+		Expect(client.IgnoreAlreadyExists(bootstrapClusterProxy.GetClient().Create(ctx, credential))).To(Succeed())
+
+		By("Waiting for the credential translation controller to create the AWSClusterStaticIdentity")
+		updatedCredential := &corev1.Secret{}
+		Eventually(func() bool {
+			if err := bootstrapClusterProxy.GetClient().Get(ctx, client.ObjectKey{
+				Name:      credentialName,
+				Namespace: "cattle-global-data",
+			}, updatedCredential); err != nil {
+				return false
+			}
+			_, ok := updatedCredential.GetAnnotations()[turtlesannotations.AWSClusterStaticIdentityRefAnnotation]
+			return ok
+		}, e2e.LoadE2EConfig().GetIntervals(bootstrapClusterProxy.GetName(), "wait-controllers")...).Should(BeTrue(),
+			"credential translation controller should annotate the credential with the AWSClusterStaticIdentity reference")
+	})
+
+	AfterEach(func() {
+		By("Deleting Rancher Cloud Credential (triggers controller cleanup of AWSClusterStaticIdentity)")
+		credential := &corev1.Secret{}
+		if err := bootstrapClusterProxy.GetClient().Get(ctx, client.ObjectKey{
+			Name:      credentialName,
+			Namespace: "cattle-global-data",
+		}, credential); err == nil {
+			Expect(bootstrapClusterProxy.GetClient().Delete(ctx, credential)).To(Succeed())
+		}
+	})
+
+	specs.CreateUsingGitOpsSpec(ctx, func() specs.CreateUsingGitOpsSpecInput {
+		return specs.CreateUsingGitOpsSpecInput{
+			E2EConfig:                 e2e.LoadE2EConfig(),
+			BootstrapClusterProxy:     bootstrapClusterProxy,
+			ClusterTemplate:           e2e.CAPIAwsEKSRancherCredentialTopology,
+			ClusterName:               "cluster-eks-cred",
+			ControlPlaneMachineCount:  ptr.To(1),
+			WorkerMachineCount:        ptr.To(1),
+			LabelNamespace:            true,
+			RancherServerURL:          hostName,
+			CAPIClusterCreateWaitName: "wait-capa-create-cluster",
+			DeleteClusterWaitName:     "wait-eks-delete",
+			TopologyNamespace:         topologyNamespace,
+			AdditionalTemplateVariables: map[string]string{
+				"AWS_CLUSTER_IDENTITY_NAME": credentialName,
+			},
+			AdditionalFleetGitRepos: []turtlesframework.FleetCreateGitRepoInput{
+				{
+					Name:            "aws-cluster-classes-eks-cred",
+					Paths:           []string{"examples/clusterclasses/aws/eks"},
 					ClusterProxy:    bootstrapClusterProxy,
 					TargetNamespace: topologyNamespace,
 				},
