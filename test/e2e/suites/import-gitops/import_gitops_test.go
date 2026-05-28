@@ -625,7 +625,7 @@ var _ = Describe("[AWS] [EKS] Create and delete CAPI cluster using Rancher Cloud
 			E2EConfig:                 e2e.LoadE2EConfig(),
 			BootstrapClusterProxy:     bootstrapClusterProxy,
 			ClusterTemplate:           e2e.CAPIAwsEKSRancherCredentialTopology,
-			ClusterName:               "cluster-eks-cred",
+			ClusterName:               "cluster-eks-rancher-credential",
 			ControlPlaneMachineCount:  ptr.To(1),
 			WorkerMachineCount:        ptr.To(1),
 			LabelNamespace:            true,
