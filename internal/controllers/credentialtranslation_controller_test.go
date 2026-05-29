@@ -37,11 +37,7 @@ import (
 	turtlesannotations "github.com/rancher/turtles/util/annotations"
 )
 
-var awsStaticIdentityGVK = schema.GroupVersionKind{
-	Group:   "infrastructure.cluster.x-k8s.io",
-	Version: "v1beta2",
-	Kind:    "AWSClusterStaticIdentity",
-}
+var awsStaticIdentityGVK = controllers.AWSClusterStaticIdentityGVK
 
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
@@ -50,9 +46,9 @@ func newTestScheme() *runtime.Scheme {
 	// Register AWSClusterStaticIdentity as an unstructured kind so the fake client can handle it.
 	s.AddKnownTypeWithName(awsStaticIdentityGVK, &unstructured.Unstructured{})
 	s.AddKnownTypeWithName(schema.GroupVersionKind{
-		Group:   "infrastructure.cluster.x-k8s.io",
-		Version: "v1beta2",
-		Kind:    "AWSClusterStaticIdentityList",
+		Group:   awsStaticIdentityGVK.Group,
+		Version: awsStaticIdentityGVK.Version,
+		Kind:    awsStaticIdentityGVK.Kind + "List",
 	}, &unstructured.UnstructuredList{})
 
 	return s
@@ -64,12 +60,12 @@ func newAWSCredentialSecret(name string, accessKey, secretKey string) *corev1.Se
 			Name:      name,
 			Namespace: sync.RancherCredentialsNamespace,
 			Annotations: map[string]string{
-				sync.DriverNameAnnotation: "amazonec2",
+				sync.DriverNameAnnotation: sync.AWSDriverName,
 			},
 		},
 		Data: map[string][]byte{
-			"amazonec2credentialConfig-accessKey": []byte(accessKey),
-			"amazonec2credentialConfig-secretKey": []byte(secretKey),
+			sync.AWSAccessKeyField: []byte(accessKey),
+			sync.AWSSecretKeyField: []byte(secretKey),
 		},
 	}
 }
@@ -133,7 +129,7 @@ func TestRancherCredentialReconciler_CreatesAWSIdentity(t *testing.T) {
 		turtlesannotations.AWSClusterStaticIdentityRefAnnotation, "cc-test123"))
 
 	// Verify finalizer was added.
-	g.Expect(updated.Finalizers).To(ContainElement("cloudcredential.cattle.io/aws-identity-finalizer"))
+	g.Expect(updated.Finalizers).To(ContainElement(controllers.AWSCredentialFinalizer))
 }
 
 func TestRancherCredentialReconciler_SkipsNonAWSCredentials(t *testing.T) {
@@ -183,12 +179,12 @@ func TestRancherCredentialReconciler_SkipsMissingCredentialKeys(t *testing.T) {
 			Name:      "incomplete-aws-cred",
 			Namespace: sync.RancherCredentialsNamespace,
 			Annotations: map[string]string{
-				sync.DriverNameAnnotation: "amazonec2",
+				sync.DriverNameAnnotation: sync.AWSDriverName,
 			},
 		},
 		Data: map[string][]byte{
-			// Missing amazonec2credentialConfig-secretKey.
-			"amazonec2credentialConfig-accessKey": []byte("AKIAIOSFODNN7EXAMPLE"),
+			// Missing AWSSecretKeyField.
+			sync.AWSAccessKeyField: []byte("AKIAIOSFODNN7EXAMPLE"),
 		},
 	}
 
@@ -219,9 +215,9 @@ func TestRancherCredentialReconciler_DeleteCleansUpResources(t *testing.T) {
 			Name:              "cc-delete-me",
 			Namespace:         sync.RancherCredentialsNamespace,
 			DeletionTimestamp: &now,
-			Finalizers:        []string{"cloudcredential.cattle.io/aws-identity-finalizer"},
+			Finalizers:        []string{controllers.AWSCredentialFinalizer},
 			Annotations: map[string]string{
-				sync.DriverNameAnnotation: "amazonec2",
+				sync.DriverNameAnnotation: sync.AWSDriverName,
 			},
 		},
 	}
@@ -295,8 +291,8 @@ func TestRancherCredentialReconciler_UpdatesCredentials(t *testing.T) {
 
 	// Simulate an update to the credential keys.
 	updatedCredential := credential.DeepCopy()
-	updatedCredential.Data["amazonec2credentialConfig-accessKey"] = []byte("NEW_ACCESS_KEY")
-	updatedCredential.Data["amazonec2credentialConfig-secretKey"] = []byte("NEW_SECRET_KEY")
+	updatedCredential.Data[sync.AWSAccessKeyField] = []byte("NEW_ACCESS_KEY")
+	updatedCredential.Data[sync.AWSSecretKeyField] = []byte("NEW_SECRET_KEY")
 	g.Expect(cl.Update(context.Background(), updatedCredential)).To(Succeed())
 
 	r := newReconciler(cl)

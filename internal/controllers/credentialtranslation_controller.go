@@ -37,21 +37,9 @@ import (
 )
 
 const (
-	// awsCredentialFinalizer is the finalizer added to Rancher Cloud Credentials to ensure
+	// AWSCredentialFinalizer is the finalizer added to Rancher Cloud Credentials to ensure
 	// cleanup of the derived AWSClusterStaticIdentity when the credential is deleted.
-	awsCredentialFinalizer = "cloudcredential.cattle.io/aws-identity-finalizer"
-
-	// awsDriverAnnotationValue is the value of the driver annotation that identifies AWS credentials.
-	awsDriverAnnotationValue = "amazonec2"
-
-	// awsStaticIdentityGroup is the API group for CAPA infrastructure resources.
-	awsStaticIdentityGroup = "infrastructure.cluster.x-k8s.io"
-
-	// awsStaticIdentityVersion is the API version for CAPA infrastructure resources.
-	awsStaticIdentityVersion = "v1beta2"
-
-	// awsStaticIdentityKind is the kind for the CAPA static identity resource.
-	awsStaticIdentityKind = "AWSClusterStaticIdentity"
+	AWSCredentialFinalizer = "cloudcredential.cattle.io/aws-identity-finalizer"
 
 	// awsCredentialSecretKeyAccessKeyID is the key in the CAPA credentials secret for the AWS access key ID.
 	awsCredentialSecretKeyAccessKeyID = "AccessKeyID"
@@ -59,12 +47,16 @@ const (
 	// awsCredentialSecretKeySecretAccessKey is the key in the CAPA credentials secret for the AWS secret access key.
 	awsCredentialSecretKeySecretAccessKey = "SecretAccessKey"
 
-	// rancherAWSAccessKeyField is the field name in Rancher Cloud Credential secrets for the AWS access key ID.
-	rancherAWSAccessKeyField = "amazonec2credentialConfig-accessKey"
-
-	// rancherAWSSecretKeyField is the field name in Rancher Cloud Credential secrets for the AWS secret key.
-	rancherAWSSecretKeyField = "amazonec2credentialConfig-secretKey"
+	// defaultCAPISystemNamespace is the default namespace for CAPA controller resources.
+	defaultCAPISystemNamespace = "capa-system"
 )
+
+// AWSClusterStaticIdentityGVK is the GroupVersionKind for CAPA's AWSClusterStaticIdentity resource.
+var AWSClusterStaticIdentityGVK = schema.GroupVersionKind{
+	Group:   "infrastructure.cluster.x-k8s.io",
+	Version: "v1beta2",
+	Kind:    "AWSClusterStaticIdentity",
+}
 
 // RancherCredentialReconciler reconciles Rancher Cloud Credentials in the cattle-global-data
 // namespace into CAPA-specific AWSClusterStaticIdentity resources. This enables users to reuse
@@ -80,7 +72,7 @@ type RancherCredentialReconciler struct {
 // SetupWithManager sets up the controller with the Manager.
 func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ctrl.Manager, options controller.Options) error {
 	if r.CAPISystemNamespace == "" {
-		r.CAPISystemNamespace = "capa-system"
+		r.CAPISystemNamespace = defaultCAPISystemNamespace
 	}
 
 	if err := ctrl.NewControllerManagedBy(mgr).
@@ -89,7 +81,7 @@ func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ct
 		WithOptions(options).
 		WithEventFilter(predicate.NewPredicateFuncs(func(obj client.Object) bool {
 			return obj.GetNamespace() == sync.RancherCredentialsNamespace &&
-				obj.GetAnnotations()[sync.DriverNameAnnotation] == awsDriverAnnotationValue
+				obj.GetAnnotations()[sync.DriverNameAnnotation] == sync.AWSDriverName
 		})).
 		Complete(r); err != nil {
 		return fmt.Errorf("creating RancherCredential translation controller: %w", err)
@@ -110,7 +102,7 @@ func (r *RancherCredentialReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Only process AWS (amazonec2) cloud credentials.
-	if credential.GetAnnotations()[sync.DriverNameAnnotation] != awsDriverAnnotationValue {
+	if credential.GetAnnotations()[sync.DriverNameAnnotation] != sync.AWSDriverName {
 		return ctrl.Result{}, nil
 	}
 
@@ -127,9 +119,9 @@ func (r *RancherCredentialReconciler) reconcileNormal(ctx context.Context, crede
 	log := log.FromContext(ctx)
 
 	// Add finalizer to the credential so we can clean up derived resources on deletion.
-	if !controllerutil.ContainsFinalizer(credential, awsCredentialFinalizer) {
+	if !controllerutil.ContainsFinalizer(credential, AWSCredentialFinalizer) {
 		patch := client.MergeFrom(credential.DeepCopy())
-		controllerutil.AddFinalizer(credential, awsCredentialFinalizer)
+		controllerutil.AddFinalizer(credential, AWSCredentialFinalizer)
 
 		if err := r.Client.Patch(ctx, credential, patch); err != nil {
 			return ctrl.Result{}, fmt.Errorf("adding finalizer to credential %s: %w", client.ObjectKeyFromObject(credential), err)
@@ -139,13 +131,13 @@ func (r *RancherCredentialReconciler) reconcileNormal(ctx context.Context, crede
 	}
 
 	// Extract the AWS credentials from the Rancher secret.
-	accessKeyID := string(credential.Data[rancherAWSAccessKeyField])
-	secretAccessKey := string(credential.Data[rancherAWSSecretKeyField])
+	accessKeyID := string(credential.Data[sync.AWSAccessKeyField])
+	secretAccessKey := string(credential.Data[sync.AWSSecretKeyField])
 
 	if accessKeyID == "" || secretAccessKey == "" {
 		log.Info("AWS credential secret is missing required keys, skipping",
 			"credential", client.ObjectKeyFromObject(credential),
-			"missingKeys", fmt.Sprintf("%s or %s", rancherAWSAccessKeyField, rancherAWSSecretKeyField))
+			"missingKeys", fmt.Sprintf("%s or %s", sync.AWSAccessKeyField, sync.AWSSecretKeyField))
 
 		return ctrl.Result{}, nil
 	}
@@ -199,7 +191,7 @@ func (r *RancherCredentialReconciler) reconcileNormal(ctx context.Context, crede
 func (r *RancherCredentialReconciler) reconcileDelete(ctx context.Context, credential *corev1.Secret) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	if !controllerutil.ContainsFinalizer(credential, awsCredentialFinalizer) {
+	if !controllerutil.ContainsFinalizer(credential, AWSCredentialFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
@@ -228,7 +220,7 @@ func (r *RancherCredentialReconciler) reconcileDelete(ctx context.Context, crede
 
 	// Remove the finalizer so the credential can be garbage-collected.
 	patch := client.MergeFrom(credential.DeepCopy())
-	controllerutil.RemoveFinalizer(credential, awsCredentialFinalizer)
+	controllerutil.RemoveFinalizer(credential, AWSCredentialFinalizer)
 
 	if err := r.Client.Patch(ctx, credential, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("removing finalizer from credential %s: %w", client.ObjectKeyFromObject(credential), err)
@@ -312,11 +304,7 @@ func (r *RancherCredentialReconciler) ensureNamespace(ctx context.Context, name 
 // awsClusterStaticIdentity returns an unstructured AWSClusterStaticIdentity with the given name.
 func (r *RancherCredentialReconciler) awsClusterStaticIdentity(name string) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   awsStaticIdentityGroup,
-		Version: awsStaticIdentityVersion,
-		Kind:    awsStaticIdentityKind,
-	})
+	obj.SetGroupVersionKind(AWSClusterStaticIdentityGVK)
 	obj.SetName(name)
 
 	return obj

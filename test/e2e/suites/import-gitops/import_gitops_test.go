@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 
+	"github.com/rancher/turtles/internal/sync"
 	"github.com/rancher/turtles/test/e2e"
 	"github.com/rancher/turtles/test/e2e/specs"
 	turtlesframework "github.com/rancher/turtles/test/framework"
@@ -576,20 +577,20 @@ var _ = Describe("[AWS] [EKS] Create and delete CAPI cluster using Rancher Cloud
 		topologyNamespace = "creategitops-aws-eks-credential"
 
 		By("Ensuring cattle-global-data namespace exists")
-		Expect(turtlesframework.CreateNamespace(ctx, bootstrapClusterProxy, "cattle-global-data")).To(Succeed())
+		Expect(turtlesframework.CreateNamespace(ctx, bootstrapClusterProxy, sync.RancherCredentialsNamespace)).To(Succeed())
 
 		By("Creating Rancher AWS Cloud Credential in cattle-global-data")
 		credential := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      credentialName,
-				Namespace: "cattle-global-data",
+				Namespace: sync.RancherCredentialsNamespace,
 				Annotations: map[string]string{
-					"provisioning.cattle.io/driver": "amazonec2",
+					sync.DriverNameAnnotation: sync.AWSDriverName,
 				},
 			},
 			Data: map[string][]byte{
-				"amazonec2credentialConfig-accessKey": []byte(os.Getenv("AWS_ACCESS_KEY_ID")),
-				"amazonec2credentialConfig-secretKey": []byte(os.Getenv("AWS_SECRET_ACCESS_KEY")),
+				sync.AWSAccessKeyField: []byte(os.Getenv("AWS_ACCESS_KEY_ID")),
+				sync.AWSSecretKeyField: []byte(os.Getenv("AWS_SECRET_ACCESS_KEY")),
 			},
 		}
 		Expect(client.IgnoreAlreadyExists(bootstrapClusterProxy.GetClient().Create(ctx, credential))).To(Succeed())
@@ -599,7 +600,7 @@ var _ = Describe("[AWS] [EKS] Create and delete CAPI cluster using Rancher Cloud
 		Eventually(func() bool {
 			if err := bootstrapClusterProxy.GetClient().Get(ctx, client.ObjectKey{
 				Name:      credentialName,
-				Namespace: "cattle-global-data",
+				Namespace: sync.RancherCredentialsNamespace,
 			}, updatedCredential); err != nil {
 				return false
 			}
@@ -614,7 +615,7 @@ var _ = Describe("[AWS] [EKS] Create and delete CAPI cluster using Rancher Cloud
 		credential := &corev1.Secret{}
 		if err := bootstrapClusterProxy.GetClient().Get(ctx, client.ObjectKey{
 			Name:      credentialName,
-			Namespace: "cattle-global-data",
+			Namespace: sync.RancherCredentialsNamespace,
 		}, credential); err == nil {
 			Expect(bootstrapClusterProxy.GetClient().Delete(ctx, credential)).To(Succeed())
 		}

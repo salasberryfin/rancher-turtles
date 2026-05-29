@@ -48,6 +48,18 @@ const (
 
 	// DriverNameAnnotation is the annotation key for the cloud provider driver name.
 	DriverNameAnnotation = "provisioning.cattle.io/driver"
+
+	// AWSDriverName is the Rancher driver annotation value that identifies AWS credentials.
+	AWSDriverName = "amazonec2"
+
+	// AWSAccessKeyField is the Rancher Cloud Credential secret key for the AWS access key ID.
+	AWSAccessKeyField = "amazonec2credentialConfig-accessKey"
+
+	// AWSSecretKeyField is the Rancher Cloud Credential secret key for the AWS secret access key.
+	AWSSecretKeyField = "amazonec2credentialConfig-secretKey"
+
+	// AWSRegionField is the Rancher Cloud Credential secret key for the AWS region.
+	AWSRegionField = "amazonec2credentialConfig-defaultRegion"
 )
 
 var (
@@ -56,16 +68,12 @@ var (
 
 	knownProviderRequirements = map[string][]Mapping{
 		"aws": {
-			{to: "AWS_ACCESS_KEY_ID", from: Raw{source: "amazonec2credentialConfig-accessKey"}},
-			{to: "AWS_SECRET_ACCESS_KEY", from: Raw{source: "amazonec2credentialConfig-secretKey"}},
-			{to: "AWS_REGION", from: Raw{source: "amazonec2credentialConfig-defaultRegion"}},
+			{to: "AWS_ACCESS_KEY_ID", from: Raw{source: AWSAccessKeyField}},
+			{to: "AWS_SECRET_ACCESS_KEY", from: Raw{source: AWSSecretKeyField}},
+			{to: "AWS_REGION", from: Raw{source: AWSRegionField}},
 			{to: "AWS_B64ENCODED_CREDENTIALS", from: Template{
 				template: awsDataTemplate,
-				sources: []string{
-					"amazonec2credentialConfig-accessKey",
-					"amazonec2credentialConfig-secretKey",
-					"amazonec2credentialConfig-defaultRegion",
-				},
+				sources:  []string{AWSAccessKeyField, AWSSecretKeyField, AWSRegionField},
 			}},
 		},
 		"azure": {
