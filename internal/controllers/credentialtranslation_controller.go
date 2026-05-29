@@ -58,12 +58,6 @@ const (
 
 	// awsCredentialSecretKeySecretAccessKey is the key in the CAPA credentials secret for the AWS secret access key.
 	awsCredentialSecretKeySecretAccessKey = "SecretAccessKey"
-
-	// rancherAWSAccessKeyField is the field name in Rancher Cloud Credential secrets for the AWS access key ID.
-	rancherAWSAccessKeyField = "amazonec2credentialConfig-accessKey"
-
-	// rancherAWSSecretKeyField is the field name in Rancher Cloud Credential secrets for the AWS secret key.
-	rancherAWSSecretKeyField = "amazonec2credentialConfig-secretKey"
 )
 
 // RancherCredentialReconciler reconciles Rancher Cloud Credentials in the cattle-global-data
@@ -139,13 +133,11 @@ func (r *RancherCredentialReconciler) reconcileNormal(ctx context.Context, crede
 	}
 
 	// Extract the AWS credentials from the Rancher secret.
-	accessKeyID := string(credential.Data[rancherAWSAccessKeyField])
-	secretAccessKey := string(credential.Data[rancherAWSSecretKeyField])
-
-	if accessKeyID == "" || secretAccessKey == "" {
+	accessKeyID, secretAccessKey, err := sync.ParseAWSCredentials(credential.Data)
+	if err != nil {
 		log.Info("AWS credential secret is missing required keys, skipping",
 			"credential", client.ObjectKeyFromObject(credential),
-			"missingKeys", fmt.Sprintf("%s or %s", rancherAWSAccessKeyField, rancherAWSSecretKeyField))
+			"error", err)
 
 		return ctrl.Result{}, nil
 	}

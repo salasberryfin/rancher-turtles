@@ -48,6 +48,15 @@ const (
 
 	// DriverNameAnnotation is the annotation key for the cloud provider driver name.
 	DriverNameAnnotation = "provisioning.cattle.io/driver"
+
+	// RancherAWSAccessKeyField is the field name in Rancher Cloud Credential secrets for the AWS access key ID.
+	RancherAWSAccessKeyField = "amazonec2credentialConfig-accessKey"
+
+	// RancherAWSSecretKeyField is the field name in Rancher Cloud Credential secrets for the AWS secret access key.
+	RancherAWSSecretKeyField = "amazonec2credentialConfig-secretKey"
+
+	// RancherAWSDefaultRegionField is the field name in Rancher Cloud Credential secrets for the AWS default region.
+	RancherAWSDefaultRegionField = "amazonec2credentialConfig-defaultRegion"
 )
 
 var (
@@ -56,15 +65,15 @@ var (
 
 	knownProviderRequirements = map[string][]Mapping{
 		"aws": {
-			{to: "AWS_ACCESS_KEY_ID", from: Raw{source: "amazonec2credentialConfig-accessKey"}},
-			{to: "AWS_SECRET_ACCESS_KEY", from: Raw{source: "amazonec2credentialConfig-secretKey"}},
-			{to: "AWS_REGION", from: Raw{source: "amazonec2credentialConfig-defaultRegion"}},
+			{to: "AWS_ACCESS_KEY_ID", from: Raw{source: RancherAWSAccessKeyField}},
+			{to: "AWS_SECRET_ACCESS_KEY", from: Raw{source: RancherAWSSecretKeyField}},
+			{to: "AWS_REGION", from: Raw{source: RancherAWSDefaultRegionField}},
 			{to: "AWS_B64ENCODED_CREDENTIALS", from: Template{
 				template: awsDataTemplate,
 				sources: []string{
-					"amazonec2credentialConfig-accessKey",
-					"amazonec2credentialConfig-secretKey",
-					"amazonec2credentialConfig-defaultRegion",
+					RancherAWSAccessKeyField,
+					RancherAWSSecretKeyField,
+					RancherAWSDefaultRegionField,
 				},
 			}},
 		},
@@ -239,7 +248,21 @@ func (s *SecretMapperSync) Get(ctx context.Context) error {
 
 		log.Error(err, "Unable to get source rancher secret by reference, looking for: "+
 			client.ObjectKeyFromObject(s.RancherSecret).String())
-	} else if err := s.client.List(ctx, secretList, client.InNamespace(RancherCredentialsNamespace)); err != nil {
+
+		conditions.Set(s.Source, metav1.Condition{
+			Type:   string(turtlesv1.RancherCredentialsSecretCondition),
+			Status: metav1.ConditionFalse,
+			Reason: turtlesv1.RancherCredentialSourceMissing,
+			Message: fmt.Sprintf(missingSource, cmp.Or(
+				s.Source.Spec.Credentials.RancherCloudCredential,
+				s.Source.Spec.Credentials.RancherCloudCredentialNamespaceName)),
+			LastTransitionTime: metav1.Now(),
+		})
+
+		return fmt.Errorf("unable to locate rancher secret with name %s for provider %s", s.RancherSecret.GetName(), s.Source.ProviderName())
+	}
+
+	if err := s.client.List(ctx, secretList, client.InNamespace(RancherCredentialsNamespace)); err != nil {
 		log.Error(err, "Unable to list source rancher secrets, looking for: "+client.ObjectKeyFromObject(s.RancherSecret).String())
 
 		return err
@@ -337,4 +360,26 @@ func Into(provider string, from map[string][]byte, to map[string]string) error {
 	}
 
 	return kerrors.NewAggregate(errors)
+}
+
+// ParseAWSCredentials extracts the AWS access key ID and secret access key from a Rancher
+// Cloud Credential secret's data map. Returns an error if either required field is absent.
+func ParseAWSCredentials(data map[string][]byte) (accessKeyID, secretAccessKey string, err error) {
+	errors := []error{}
+
+	accessKeyIDRaw := Raw{source: RancherAWSAccessKeyField}
+	if err := accessKeyIDRaw.validate(data); err != nil {
+		errors = append(errors, err)
+	}
+
+	secretAccessKeyRaw := Raw{source: RancherAWSSecretKeyField}
+	if err := secretAccessKeyRaw.validate(data); err != nil {
+		errors = append(errors, err)
+	}
+
+	if err := kerrors.NewAggregate(errors); err != nil {
+		return "", "", err
+	}
+
+	return accessKeyIDRaw.convert(data), secretAccessKeyRaw.convert(data), nil
 }
