@@ -259,7 +259,7 @@ func (s *SecretMapperSync) Get(ctx context.Context) error {
 			LastTransitionTime: metav1.Now(),
 		})
 
-		return fmt.Errorf("unable to locate rancher secret with name %s for provider %s", s.RancherSecret.GetName(), s.Source.ProviderName())
+		return fmt.Errorf("unable to locate rancher secret with name %s for provider %s: %w", s.RancherSecret.GetName(), s.Source.ProviderName(), err)
 	}
 
 	if err := s.client.List(ctx, secretList, client.InNamespace(RancherCredentialsNamespace)); err != nil {
