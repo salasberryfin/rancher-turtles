@@ -60,7 +60,8 @@ func newAWSCredentialSecret(name string, accessKey, secretKey string) *corev1.Se
 			Name:      name,
 			Namespace: sync.RancherCredentialsNamespace,
 			Annotations: map[string]string{
-				sync.DriverNameAnnotation: sync.AWSDriverName,
+				sync.DriverNameAnnotation:                           sync.AWSDriverName,
+				turtlesannotations.TranslateCredentialAnnotation:    "",
 			},
 		},
 		Data: map[string][]byte{
@@ -179,7 +180,8 @@ func TestRancherCredentialReconciler_SkipsMissingCredentialKeys(t *testing.T) {
 			Name:      "incomplete-aws-cred",
 			Namespace: sync.RancherCredentialsNamespace,
 			Annotations: map[string]string{
-				sync.DriverNameAnnotation: sync.AWSDriverName,
+				sync.DriverNameAnnotation:                        sync.AWSDriverName,
+				turtlesannotations.TranslateCredentialAnnotation: "",
 			},
 		},
 		Data: map[string][]byte{
@@ -307,4 +309,109 @@ func TestRancherCredentialReconciler_UpdatesCredentials(t *testing.T) {
 
 	g.Expect(credSecret.Data).To(HaveKeyWithValue("AccessKeyID", []byte("NEW_ACCESS_KEY")))
 	g.Expect(credSecret.Data).To(HaveKeyWithValue("SecretAccessKey", []byte("NEW_SECRET_KEY")))
+}
+
+func TestRancherCredentialReconciler_SkipsWithoutTranslateAnnotation(t *testing.T) {
+	g := NewWithT(t)
+	scheme := newTestScheme()
+
+	// An AWS credential that is missing the translate-credential opt-in annotation.
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cc-no-translate",
+			Namespace: sync.RancherCredentialsNamespace,
+			Annotations: map[string]string{
+				sync.DriverNameAnnotation: sync.AWSDriverName,
+				// TranslateCredentialAnnotation intentionally absent.
+			},
+		},
+		Data: map[string][]byte{
+			sync.AWSAccessKeyField: []byte("AKIAIOSFODNN7EXAMPLE"),
+			sync.AWSSecretKeyField: []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		},
+	}
+
+	cl := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(secret).
+		Build()
+
+	r := newReconciler(cl)
+	reconcileCredential(g, r, secret)
+
+	// No AWSClusterStaticIdentity should have been created.
+	awsIdentity := &unstructured.Unstructured{}
+	awsIdentity.SetGroupVersionKind(awsStaticIdentityGVK)
+	err := cl.Get(context.Background(), types.NamespacedName{Name: "cc-no-translate"}, awsIdentity)
+	g.Expect(err).To(HaveOccurred())
+
+	// No credentials secret should have been created in capa-system.
+	credSecret := &corev1.Secret{}
+	err = cl.Get(context.Background(), types.NamespacedName{
+		Name:      "cc-no-translate",
+		Namespace: "capa-system",
+	}, credSecret)
+	g.Expect(err).To(HaveOccurred())
+}
+
+func TestRancherCredentialReconciler_RemoveTranslateAnnotationCleansUp(t *testing.T) {
+	g := NewWithT(t)
+	scheme := newTestScheme()
+
+	// A credential that previously had the annotation (resources already exist, finalizer set)
+	// but now has the annotation removed.
+	credential := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "cc-de-annotated",
+			Namespace:  sync.RancherCredentialsNamespace,
+			Finalizers: []string{controllers.AWSCredentialFinalizer},
+			Annotations: map[string]string{
+				sync.DriverNameAnnotation: sync.AWSDriverName,
+				// TranslateCredentialAnnotation intentionally absent — simulates removal.
+			},
+		},
+		Data: map[string][]byte{
+			sync.AWSAccessKeyField: []byte("AKIAIOSFODNN7EXAMPLE"),
+			sync.AWSSecretKeyField: []byte("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+		},
+	}
+
+	// Pre-existing derived resources.
+	credSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cc-de-annotated",
+			Namespace: "capa-system",
+		},
+	}
+
+	awsIdentity := &unstructured.Unstructured{}
+	awsIdentity.SetGroupVersionKind(awsStaticIdentityGVK)
+	awsIdentity.SetName("cc-de-annotated")
+
+	cl := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(credential, credSecret, awsIdentity).
+		Build()
+
+	r := newReconciler(cl)
+	reconcileCredential(g, r, credential)
+
+	// Credentials secret should have been deleted.
+	deletedSecret := &corev1.Secret{}
+	err := cl.Get(context.Background(), types.NamespacedName{
+		Name:      "cc-de-annotated",
+		Namespace: "capa-system",
+	}, deletedSecret)
+	g.Expect(err).To(HaveOccurred())
+
+	// AWSClusterStaticIdentity should have been deleted.
+	deletedIdentity := &unstructured.Unstructured{}
+	deletedIdentity.SetGroupVersionKind(awsStaticIdentityGVK)
+	err = cl.Get(context.Background(), types.NamespacedName{Name: "cc-de-annotated"}, deletedIdentity)
+	g.Expect(err).To(HaveOccurred())
+
+	// Finalizer should have been removed from the credential.
+	updatedCredential := &corev1.Secret{}
+	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(credential), updatedCredential)).To(Succeed())
+	g.Expect(updatedCredential.Finalizers).NotTo(ContainElement(controllers.AWSCredentialFinalizer))
 }
