@@ -22,6 +22,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,6 +43,7 @@ var awsStaticIdentityGVK = controllers.AWSClusterStaticIdentityGVK
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(s)
+	_ = apiextensionsv1.AddToScheme(s)
 
 	// Register AWSClusterStaticIdentity as an unstructured kind so the fake client can handle it.
 	s.AddKnownTypeWithName(awsStaticIdentityGVK, &unstructured.Unstructured{})
@@ -52,6 +54,16 @@ func newTestScheme() *runtime.Scheme {
 	}, &unstructured.UnstructuredList{})
 
 	return s
+}
+
+// awsCRD returns a minimal CustomResourceDefinition object for AWSClusterStaticIdentity.
+// Add this to the fake client to simulate the CRD being installed in the cluster.
+func awsCRD() *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "awsclusterstaticidentities.infrastructure.cluster.x-k8s.io",
+		},
+	}
 }
 
 func newAWSCredentialSecret(name string, accessKey, secretKey string) *corev1.Secret {
@@ -98,7 +110,7 @@ func TestRancherCredentialReconciler_CreatesAWSIdentity(t *testing.T) {
 
 	cl := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(credential).
+		WithObjects(credential, awsCRD()).
 		Build()
 
 	r := newReconciler(cl)
@@ -192,7 +204,7 @@ func TestRancherCredentialReconciler_SkipsMissingCredentialKeys(t *testing.T) {
 
 	cl := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(secret).
+		WithObjects(secret, awsCRD()).
 		Build()
 
 	r := newReconciler(cl)
@@ -288,7 +300,7 @@ func TestRancherCredentialReconciler_UpdatesCredentials(t *testing.T) {
 
 	cl := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(credential, existingCredSecret, existingIdentity).
+		WithObjects(credential, existingCredSecret, existingIdentity, awsCRD()).
 		Build()
 
 	// Simulate an update to the credential keys.
@@ -414,4 +426,87 @@ func TestRancherCredentialReconciler_RemoveTranslateAnnotationCleansUp(t *testin
 	updatedCredential := &corev1.Secret{}
 	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(credential), updatedCredential)).To(Succeed())
 	g.Expect(updatedCredential.Finalizers).NotTo(ContainElement(controllers.AWSCredentialFinalizer))
+}
+
+func TestRancherCredentialReconciler_SkipsWhenCRDNotAvailable(t *testing.T) {
+	g := NewWithT(t)
+
+	// Use the standard scheme but do NOT add the CRD object to the fake store,
+	// simulating a cluster where the CRD is not installed.
+	scheme := newTestScheme()
+
+	credential := newAWSCredentialSecret("cc-no-crd", "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")
+
+	cl := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(credential).
+		Build()
+
+	r := newReconciler(cl)
+	result := reconcileCredential(g, r, credential)
+
+	// Should return an empty result (no error, no requeue).
+	g.Expect(result).To(Equal(ctrl.Result{}))
+
+	// No finalizer should have been added.
+	updated := &corev1.Secret{}
+	g.Expect(cl.Get(context.Background(), client.ObjectKeyFromObject(credential), updated)).To(Succeed())
+	g.Expect(updated.Finalizers).NotTo(ContainElement(controllers.AWSCredentialFinalizer))
+
+	// No identity reference annotation should have been set.
+	g.Expect(updated.GetAnnotations()).NotTo(HaveKey(turtlesannotations.AWSClusterStaticIdentityRefAnnotation))
+}
+
+func TestRancherCredentialReconciler_DeleteHandlesMissingCRD(t *testing.T) {
+	g := NewWithT(t)
+
+	// Use the standard scheme but do NOT add the CRD object to the fake store,
+	// simulating a credential that has a finalizer from a previous translation but
+	// the CRD is no longer installed.
+	scheme := newTestScheme()
+
+	now := metav1.Now()
+	// A credential with a finalizer set (e.g. was previously translated), now being deleted.
+	credential := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "cc-delete-no-crd",
+			Namespace:         sync.RancherCredentialsNamespace,
+			DeletionTimestamp: &now,
+			Finalizers:        []string{controllers.AWSCredentialFinalizer},
+			Annotations: map[string]string{
+				sync.DriverNameAnnotation: sync.AWSDriverName,
+			},
+		},
+	}
+
+	// Pre-existing credentials secret in the CAPI namespace.
+	credSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cc-delete-no-crd",
+			Namespace: "capa-system",
+		},
+	}
+
+	cl := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(credential, credSecret).
+		Build()
+
+	r := newReconciler(cl)
+	// Must not return an error even though the CRD is unavailable.
+	reconcileCredential(g, r, credential)
+
+	// The credentials secret in the CAPI namespace should have been deleted.
+	deletedSecret := &corev1.Secret{}
+	err := cl.Get(context.Background(), types.NamespacedName{
+		Name:      "cc-delete-no-crd",
+		Namespace: "capa-system",
+	}, deletedSecret)
+	g.Expect(err).To(HaveOccurred())
+
+	// The finalizer should have been removed (or the object fully gone).
+	updatedCredential := &corev1.Secret{}
+	if err := cl.Get(context.Background(), client.ObjectKeyFromObject(credential), updatedCredential); err == nil {
+		g.Expect(updatedCredential.Finalizers).NotTo(ContainElement(controllers.AWSCredentialFinalizer))
+	}
 }

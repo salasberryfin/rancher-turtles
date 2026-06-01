@@ -19,17 +19,23 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -50,6 +56,9 @@ const (
 
 	// defaultCAPISystemNamespace is the default namespace for CAPA controller resources.
 	defaultCAPISystemNamespace = "capa-system"
+
+	// awsClusterStaticIdentityCRDName is the name of the CRD that must be installed for translation to proceed.
+	awsClusterStaticIdentityCRDName = "awsclusterstaticidentities.infrastructure.cluster.x-k8s.io"
 )
 
 // AWSClusterStaticIdentityGVK is the GroupVersionKind for CAPA's AWSClusterStaticIdentity resource.
@@ -68,6 +77,10 @@ type RancherCredentialReconciler struct {
 	// CAPISystemNamespace is the namespace where the CAPA controller is installed and where
 	// the credentials secret will be created. Defaults to "capa-system".
 	CAPISystemNamespace string
+
+	// crdAvailable is set to 1 once the AWSClusterStaticIdentity CRD has been confirmed as
+	// installed. Cached to avoid a List call on every reconcile once the CRD is known present.
+	crdAvailable atomic.Bool
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -76,43 +89,60 @@ func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ct
 		r.CAPISystemNamespace = defaultCAPISystemNamespace
 	}
 
+	// Register apiextensions so the manager can watch CustomResourceDefinition objects.
+	if err := apiextensionsv1.AddToScheme(mgr.GetScheme()); err != nil {
+		return fmt.Errorf("adding apiextensions to scheme: %w", err)
+	}
+
 	isAWSCredential := func(obj client.Object) bool {
 		return obj.GetNamespace() == sync.RancherCredentialsNamespace &&
 			obj.GetAnnotations()[sync.DriverNameAnnotation] == sync.AWSDriverName
 	}
 
+	// credentialPredicates filters Secret events so only relevant AWS credentials are enqueued.
+	// Applied per-source (on For) so the global filter does not affect the CRD watch below.
+	credentialPredicates := predicate.Funcs{
+		// Only enqueue creates for AWS credentials that have opted in to translation.
+		CreateFunc: func(e event.CreateEvent) bool {
+			return isAWSCredential(e.Object) &&
+				turtlesannotations.HasAnnotation(e.Object, turtlesannotations.TranslateCredentialAnnotation)
+		},
+		// Enqueue updates whenever the credential was or is an opt-in AWS credential,
+		// so that removing the annotation triggers cleanup of derived resources.
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if !isAWSCredential(e.ObjectNew) {
+				return false
+			}
+
+			hadAnnotation := turtlesannotations.HasAnnotation(e.ObjectOld, turtlesannotations.TranslateCredentialAnnotation)
+			hasAnnotation := turtlesannotations.HasAnnotation(e.ObjectNew, turtlesannotations.TranslateCredentialAnnotation)
+
+			return hadAnnotation || hasAnnotation
+		},
+		// Deletions are handled via the finalizer; let them through for any AWS credential.
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return isAWSCredential(e.Object)
+		},
+		// Only enqueue generic events for opted-in AWS credentials.
+		GenericFunc: func(e event.GenericEvent) bool {
+			return isAWSCredential(e.Object) &&
+				turtlesannotations.HasAnnotation(e.Object, turtlesannotations.TranslateCredentialAnnotation)
+		},
+	}
+
 	if err := ctrl.NewControllerManagedBy(mgr).
 		Named("rancher-credential-translation").
-		For(&corev1.Secret{}).
+		For(&corev1.Secret{}, builder.WithPredicates(credentialPredicates)).
+		// Watch for the AWSClusterStaticIdentity CRD. When it becomes available, re-enqueue
+		// all opt-in AWS credentials so they are translated without delay.
+		Watches(
+			&apiextensionsv1.CustomResourceDefinition{},
+			handler.EnqueueRequestsFromMapFunc(r.crdToAWSCredentials),
+			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+				return obj.GetName() == awsClusterStaticIdentityCRDName
+			})),
+		).
 		WithOptions(options).
-		WithEventFilter(predicate.Funcs{
-			// Only enqueue creates for AWS credentials that have opted in to translation.
-			CreateFunc: func(e event.CreateEvent) bool {
-				return isAWSCredential(e.Object) &&
-					turtlesannotations.HasAnnotation(e.Object, turtlesannotations.TranslateCredentialAnnotation)
-			},
-			// Enqueue updates whenever the credential was or is an opt-in AWS credential,
-			// so that removing the annotation triggers cleanup of derived resources.
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				if !isAWSCredential(e.ObjectNew) {
-					return false
-				}
-
-				hadAnnotation := turtlesannotations.HasAnnotation(e.ObjectOld, turtlesannotations.TranslateCredentialAnnotation)
-				hasAnnotation := turtlesannotations.HasAnnotation(e.ObjectNew, turtlesannotations.TranslateCredentialAnnotation)
-
-				return hadAnnotation || hasAnnotation
-			},
-			// Deletions are handled via the finalizer; let them through for any AWS credential.
-			DeleteFunc: func(e event.DeleteEvent) bool {
-				return isAWSCredential(e.Object)
-			},
-			// Only enqueue generic events for opted-in AWS credentials.
-			GenericFunc: func(e event.GenericEvent) bool {
-				return isAWSCredential(e.Object) &&
-					turtlesannotations.HasAnnotation(e.Object, turtlesannotations.TranslateCredentialAnnotation)
-			},
-		}).
 		Complete(r); err != nil {
 		return fmt.Errorf("creating RancherCredential translation controller: %w", err)
 	}
@@ -143,6 +173,13 @@ func (r *RancherCredentialReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// If the opt-in annotation has been removed, clean up any previously translated resources.
 	if !turtlesannotations.HasAnnotation(credential, turtlesannotations.TranslateCredentialAnnotation) {
 		return r.reconcileDelete(ctx, credential)
+	}
+
+	// Only translate if the AWSClusterStaticIdentity CRD is installed in the cluster.
+	// When the CRD becomes available it triggers re-enqueue of all credentials via the CRD watch.
+	if !r.isCRDAvailable(ctx) {
+		log.FromContext(ctx).V(4).Info("AWSClusterStaticIdentity CRD not available, skipping translation")
+		return ctrl.Result{}, nil
 	}
 
 	return r.reconcileNormal(ctx, credential)
@@ -231,9 +268,11 @@ func (r *RancherCredentialReconciler) reconcileDelete(ctx context.Context, crede
 	}
 
 	identityName := credential.Name
-	// Delete the AWSClusterStaticIdentity.
+
+	// Delete the AWSClusterStaticIdentity. Treat a missing CRD the same as a missing object:
+	// there is nothing to delete, so proceed with cleanup.
 	awsIdentity := r.awsClusterStaticIdentity(identityName)
-	if err := r.Client.Delete(ctx, awsIdentity); err != nil && !apierrors.IsNotFound(err) {
+	if err := r.Client.Delete(ctx, awsIdentity); err != nil && !apierrors.IsNotFound(err) && !apimeta.IsNoMatchError(err) {
 		return ctrl.Result{}, fmt.Errorf("deleting AWSClusterStaticIdentity %s: %w", identityName, err)
 	}
 
@@ -341,4 +380,55 @@ func (r *RancherCredentialReconciler) awsClusterStaticIdentity(name string) *uns
 	obj.SetName(name)
 
 	return obj
+}
+
+// isCRDAvailable reports whether the AWSClusterStaticIdentity CRD is installed in the cluster.
+// The result is cached via an atomic bool; once confirmed present the check is reduced to an
+// atomic read on every subsequent reconcile (O(1), no API call).
+func (r *RancherCredentialReconciler) isCRDAvailable(ctx context.Context) bool {
+	if r.crdAvailable.Load() {
+		return true
+	}
+
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: awsClusterStaticIdentityCRDName}, crd); err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.FromContext(ctx).Error(err, "Checking AWSClusterStaticIdentity CRD availability")
+		}
+
+		return false
+	}
+
+	r.crdAvailable.Store(true)
+
+	return true
+}
+
+// crdToAWSCredentials maps a CustomResourceDefinition event to reconcile requests for all
+// opt-in AWS Cloud Credentials. It is called when the AWSClusterStaticIdentity CRD is
+// created so that credentials that already exist get translated without waiting for a
+// separate event on each Secret.
+func (r *RancherCredentialReconciler) crdToAWSCredentials(ctx context.Context, _ client.Object) []ctrl.Request {
+	secretList := &corev1.SecretList{}
+	if err := r.Client.List(ctx, secretList, client.InNamespace(sync.RancherCredentialsNamespace)); err != nil {
+		log.FromContext(ctx).Error(err, "Listing AWS credentials after CRD became available")
+		return nil
+	}
+
+	var reqs []ctrl.Request
+
+	for i := range secretList.Items {
+		s := &secretList.Items[i]
+		if s.GetAnnotations()[sync.DriverNameAnnotation] == sync.AWSDriverName &&
+			turtlesannotations.HasAnnotation(s, turtlesannotations.TranslateCredentialAnnotation) {
+			reqs = append(reqs, ctrl.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      s.Name,
+					Namespace: s.Namespace,
+				},
+			})
+		}
+	}
+
+	return reqs
 }
