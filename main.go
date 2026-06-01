@@ -43,6 +43,7 @@ import (
 	operatorv1 "sigs.k8s.io/cluster-api-operator/api/v1alpha2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	managementv3 "github.com/rancher/turtles/api/rancher/management/v3"
 	provisioningv1 "github.com/rancher/turtles/api/rancher/provisioning/v1"
 	turtlesv1 "github.com/rancher/turtles/api/v1alpha1"
@@ -74,6 +75,7 @@ func init() {
 
 	//+kubebuilder:scaffold:scheme
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
 	utilruntime.Must(provisioningv1.AddToScheme(scheme))
 	utilruntime.Must(managementv3.AddToScheme(scheme))

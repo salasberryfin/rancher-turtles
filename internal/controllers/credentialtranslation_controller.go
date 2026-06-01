@@ -89,11 +89,6 @@ func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ct
 		r.CAPISystemNamespace = defaultCAPISystemNamespace
 	}
 
-	// Register apiextensions so the manager can watch CustomResourceDefinition objects.
-	if err := apiextensionsv1.AddToScheme(mgr.GetScheme()); err != nil {
-		return fmt.Errorf("adding apiextensions to scheme: %w", err)
-	}
-
 	isAWSCredential := func(obj client.Object) bool {
 		return obj.GetNamespace() == sync.RancherCredentialsNamespace &&
 			obj.GetAnnotations()[sync.DriverNameAnnotation] == sync.AWSDriverName
@@ -130,6 +125,18 @@ func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ct
 		},
 	}
 
+	// crdPredicate fires only when the AWSClusterStaticIdentity CRD is created.
+	// We don't need to react to updates or deletes: updates don't change CRD availability,
+	// and deletes are handled by isCRDAvailable returning false on the next reconcile.
+	crdPredicate := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return e.Object.GetName() == awsClusterStaticIdentityCRDName
+		},
+		UpdateFunc:  func(event.UpdateEvent) bool { return false },
+		DeleteFunc:  func(event.DeleteEvent) bool { return false },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+
 	if err := ctrl.NewControllerManagedBy(mgr).
 		Named("rancher-credential-translation").
 		For(&corev1.Secret{}, builder.WithPredicates(credentialPredicates)).
@@ -138,9 +145,7 @@ func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ct
 		Watches(
 			&apiextensionsv1.CustomResourceDefinition{},
 			handler.EnqueueRequestsFromMapFunc(r.crdToAWSCredentials),
-			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
-				return obj.GetName() == awsClusterStaticIdentityCRDName
-			})),
+			builder.WithPredicates(crdPredicate),
 		).
 		WithOptions(options).
 		Complete(r); err != nil {
