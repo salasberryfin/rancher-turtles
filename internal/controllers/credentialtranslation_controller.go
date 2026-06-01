@@ -105,7 +105,7 @@ func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ct
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return isAWSCredential(e.ObjectNew)
 		},
-		// Deletions are handled via the finalizer; let them through for any AWS credential.
+		// Deletions are handled via the finalizer; let all AWS credential deletions through.
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return isAWSCredential(e.Object)
 		},
