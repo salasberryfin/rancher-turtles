@@ -121,7 +121,7 @@ func TestRancherCredentialReconciler_CreatesAWSIdentity(t *testing.T) {
 
 	spec := awsIdentity.Object["spec"].(map[string]interface{})
 	g.Expect(spec["secretRef"]).To(Equal("cc-test123"))
-	g.Expect(spec).To(HaveKey("allowedNamespaces"))
+	g.Expect(spec["allowedNamespaces"]).To(Equal(map[string]interface{}{}))
 
 	// Verify the Rancher credential was annotated.
 	updated := &corev1.Secret{}

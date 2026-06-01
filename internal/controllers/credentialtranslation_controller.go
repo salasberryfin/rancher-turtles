@@ -302,10 +302,8 @@ func (r *RancherCredentialReconciler) reconcileAWSClusterStaticIdentity(ctx cont
 	result, err := controllerutil.CreateOrUpdate(ctx, r.Client, awsIdentity, func() error {
 		awsIdentity.Object["spec"] = map[string]interface{}{
 			"secretRef": name,
-			// allowedNamespaces with an empty list permits all namespaces to use this identity.
-			"allowedNamespaces": map[string]interface{}{
-				"list": []interface{}{},
-			},
+			// An empty allowedNamespaces object permits all namespaces to use this identity.
+			"allowedNamespaces": map[string]interface{}{},
 		}
 
 		return nil
