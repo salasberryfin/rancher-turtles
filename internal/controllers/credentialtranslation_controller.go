@@ -97,31 +97,21 @@ func (r *RancherCredentialReconciler) SetupWithManager(_ context.Context, mgr ct
 	// credentialPredicates filters Secret events so only relevant AWS credentials are enqueued.
 	// Applied per-source (on For) so the global filter does not affect the CRD watch below.
 	credentialPredicates := predicate.Funcs{
-		// Only enqueue creates for AWS credentials that have opted in to translation.
+		// Enqueue creates for all AWS credentials.
 		CreateFunc: func(e event.CreateEvent) bool {
-			return isAWSCredential(e.Object) &&
-				turtlesannotations.HasAnnotation(e.Object, turtlesannotations.TranslateCredentialAnnotation)
+			return isAWSCredential(e.Object)
 		},
-		// Enqueue updates whenever the credential was or is an opt-in AWS credential,
-		// so that removing the annotation triggers cleanup of derived resources.
+		// Enqueue updates for all AWS credentials.
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			if !isAWSCredential(e.ObjectNew) {
-				return false
-			}
-
-			hadAnnotation := turtlesannotations.HasAnnotation(e.ObjectOld, turtlesannotations.TranslateCredentialAnnotation)
-			hasAnnotation := turtlesannotations.HasAnnotation(e.ObjectNew, turtlesannotations.TranslateCredentialAnnotation)
-
-			return hadAnnotation || hasAnnotation
+			return isAWSCredential(e.ObjectNew)
 		},
 		// Deletions are handled via the finalizer; let them through for any AWS credential.
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			return isAWSCredential(e.Object)
 		},
-		// Only enqueue generic events for opted-in AWS credentials.
+		// Enqueue generic events for all AWS credentials.
 		GenericFunc: func(e event.GenericEvent) bool {
-			return isAWSCredential(e.Object) &&
-				turtlesannotations.HasAnnotation(e.Object, turtlesannotations.TranslateCredentialAnnotation)
+			return isAWSCredential(e.Object)
 		},
 	}
 
@@ -172,11 +162,6 @@ func (r *RancherCredentialReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	if !credential.DeletionTimestamp.IsZero() {
-		return r.reconcileDelete(ctx, credential)
-	}
-
-	// If the opt-in annotation has been removed, clean up any previously translated resources.
-	if !turtlesannotations.HasAnnotation(credential, turtlesannotations.TranslateCredentialAnnotation) {
 		return r.reconcileDelete(ctx, credential)
 	}
 
@@ -424,8 +409,7 @@ func (r *RancherCredentialReconciler) crdToAWSCredentials(ctx context.Context, _
 
 	for i := range secretList.Items {
 		s := &secretList.Items[i]
-		if s.GetAnnotations()[sync.DriverNameAnnotation] == sync.AWSDriverName &&
-			turtlesannotations.HasAnnotation(s, turtlesannotations.TranslateCredentialAnnotation) {
+		if s.GetAnnotations()[sync.DriverNameAnnotation] == sync.AWSDriverName {
 			reqs = append(reqs, ctrl.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      s.Name,

@@ -45,12 +45,6 @@ const (
 	// AWSClusterStaticIdentityRefAnnotation is the annotation added to a Rancher Cloud Credential
 	// to reference the translated AWSClusterStaticIdentity object name.
 	AWSClusterStaticIdentityRefAnnotation = "cloudcredential.cattle.io/aws-static-identity-ref"
-
-	// TranslateCredentialAnnotation is the opt-in annotation that must be present on a Rancher
-	// Cloud Credential for it to be translated into a CAPA AWSClusterStaticIdentity. Removing
-	// this annotation from an already-translated credential will trigger cleanup of the derived
-	// resources.
-	TranslateCredentialAnnotation = "cluster-api.cattle.io/translate-credential"
 )
 
 // HasClusterImportAnnotation returns true if the object has the `imported` annotation.
