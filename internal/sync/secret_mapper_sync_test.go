@@ -278,32 +278,6 @@ var _ = Describe("SecretMapperSync get", func() {
 		}).Should(Succeed())
 	})
 
-	It("provider requirements azure", func() {
-		capiProvider.Spec.Name = "azure"
-		rancherSecret.Annotations[sync.DriverNameAnnotation] = "azure"
-		Expect(testEnv.Client.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-		syncer := sync.NewSecretMapperSync(ctx, testEnv, capiProvider).(*sync.SecretMapperSync)
-
-		Eventually(func(g Gomega) {
-			g.Expect(syncer.Sync(context.Background())).ToNot(HaveOccurred())
-			g.Expect(conditions.Get(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).ToNot(BeNil())
-			g.Expect(conditions.IsFalse(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-			g.Expect(conditions.GetMessage(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(
-				ContainSubstring("key not found: azurecredentialConfig-subscriptionId, key not found: azurecredentialConfig-clientId, key not found: azurecredentialConfig-clientSecret, key not found: azurecredentialConfig-tenantId"))
-
-			g.Expect(syncer.Destination.StringData).To(Equal(map[string]string{
-				"AZURE_CLIENT_ID_B64":       "",
-				"AZURE_CLIENT_SECRET_B64":   "",
-				"AZURE_TENANT_ID_B64":       "",
-				"AZURE_SUBSCRIPTION_ID":     "",
-				"AZURE_CLIENT_ID":           "",
-				"AZURE_CLIENT_SECRET":       "",
-				"AZURE_TENANT_ID":           "",
-				"AZURE_SUBSCRIPTION_ID_B64": "",
-			}))
-		}).Should(Succeed())
-	})
-
 	It("provider requirements aws", func() {
 		capiProvider.Spec.Name = "aws"
 		rancherSecret.Annotations[sync.DriverNameAnnotation] = "aws"
@@ -322,84 +296,6 @@ var _ = Describe("SecretMapperSync get", func() {
 				"AWS_B64ENCODED_CREDENTIALS": "",
 				"AWS_ACCESS_KEY_ID":          "",
 				"AWS_SECRET_ACCESS_KEY":      "",
-			}))
-		}).Should(Succeed())
-	})
-
-	It("provider requirements gcp", func() {
-		capiProvider.Spec.Name = "gcp"
-		rancherSecret.Annotations[sync.DriverNameAnnotation] = "gcp"
-		Expect(testEnv.Client.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-		syncer := sync.NewSecretMapperSync(ctx, testEnv, capiProvider).(*sync.SecretMapperSync)
-
-		Eventually(ctx, func(g Gomega) {
-			g.Expect(syncer.Sync(context.Background())).ToNot(HaveOccurred())
-			g.Expect(conditions.Get(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).ToNot(BeNil())
-			g.Expect(conditions.IsFalse(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-			g.Expect(conditions.GetMessage(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(
-				ContainSubstring("googlecredentialConfig-authEncodedJson"))
-
-			g.Expect(syncer.Destination.StringData).To(Equal(map[string]string{
-				"GCP_B64ENCODED_CREDENTIALS": "",
-			}))
-		}).Should(Succeed())
-	})
-
-	It("converts GCP credentials with double B64 encode", func() {
-		capiProvider.Spec.Name = "gcp"
-		rancherSecret.Annotations[sync.DriverNameAnnotation] = "gcp"
-		rancherSecret.Data = map[string][]byte{
-			"googlecredentialConfig-authEncodedJson": []byte("test"),
-		}
-		Expect(testEnv.Client.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-
-		Eventually(ctx, func(g Gomega) {
-			syncer := sync.NewSecretMapperSync(ctx, testEnv, capiProvider).(*sync.SecretMapperSync)
-			g.Expect(syncer.Get(ctx)).ToNot(HaveOccurred())
-			g.Expect(syncer.Sync(context.Background())).ToNot(HaveOccurred())
-			g.Expect(conditions.Get(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).ToNot(BeNil())
-			g.Expect(conditions.IsTrue(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-
-			g.Expect(syncer.Destination.StringData).To(Equal(map[string]string{
-				"GCP_B64ENCODED_CREDENTIALS": "dGVzdA==",
-			}))
-		}).Should(Succeed())
-	})
-
-	It("provider requirements digitalocean", func() {
-		capiProvider.Spec.Name = "digitalocean"
-		rancherSecret.Annotations[sync.DriverNameAnnotation] = "digitalocean"
-		Expect(testEnv.Client.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-		syncer := sync.NewSecretMapperSync(ctx, testEnv, capiProvider).(*sync.SecretMapperSync)
-
-		Eventually(ctx, func(g Gomega) {
-			g.Expect(syncer.Sync(context.Background())).ToNot(HaveOccurred())
-			g.Expect(conditions.Get(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).ToNot(BeNil())
-			g.Expect(conditions.IsFalse(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-			g.Expect(conditions.GetMessage(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(
-				ContainSubstring("key not found: digitaloceancredentialConfig-accessToken"))
-
-			g.Expect(syncer.Destination.StringData).To(Equal(map[string]string{
-				"DO_B64ENCODED_CREDENTIALS": "",
-				"DIGITALOCEAN_ACCESS_TOKEN": "",
-			}))
-		}).Should(Succeed())
-	})
-	It("provider requirements vsphere", func() {
-		capiProvider.Spec.Name = "vsphere"
-		rancherSecret.Annotations[sync.DriverNameAnnotation] = "vmwarevsphere"
-		Expect(testEnv.Client.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-		syncer := sync.NewSecretMapperSync(ctx, testEnv, capiProvider).(*sync.SecretMapperSync)
-
-		Eventually(ctx, func(g Gomega) {
-			g.Expect(syncer.Sync(context.Background())).ToNot(HaveOccurred())
-			g.Expect(conditions.Get(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).ToNot(BeNil())
-			g.Expect(conditions.IsFalse(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-			g.Expect(conditions.GetMessage(syncer.Source, string(turtlesv1.RancherCredentialsSecretCondition))).To(
-				ContainSubstring("key not found: vmwarevspherecredentialConfig-password, key not found: vmwarevspherecredentialConfig-username"))
-			g.Expect(syncer.Destination.StringData).To(Equal(map[string]string{
-				"VSPHERE_PASSWORD": "",
-				"VSPHERE_USERNAME": "",
 			}))
 		}).Should(Succeed())
 	})

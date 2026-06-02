@@ -68,31 +68,6 @@ var (
 				},
 			}},
 		},
-		"azure": {
-			{to: "AZURE_SUBSCRIPTION_ID", from: Raw{source: "azurecredentialConfig-subscriptionId"}},
-			{to: "AZURE_CLIENT_ID", from: Raw{source: "azurecredentialConfig-clientId"}},
-			{to: "AZURE_CLIENT_SECRET", from: Raw{source: "azurecredentialConfig-clientSecret"}},
-			{to: "AZURE_TENANT_ID", from: Raw{source: "azurecredentialConfig-tenantId"}},
-			{to: "AZURE_SUBSCRIPTION_ID_B64", from: B64{source: "azurecredentialConfig-subscriptionId"}},
-			{to: "AZURE_CLIENT_ID_B64", from: B64{source: "azurecredentialConfig-clientId"}},
-			{to: "AZURE_CLIENT_SECRET_B64", from: B64{source: "azurecredentialConfig-clientSecret"}},
-			{to: "AZURE_TENANT_ID_B64", from: B64{source: "azurecredentialConfig-tenantId"}},
-		},
-		"vsphere": {
-			{to: "VSPHERE_PASSWORD", from: Raw{source: "vmwarevspherecredentialConfig-password"}},
-			{to: "VSPHERE_USERNAME", from: Raw{source: "vmwarevspherecredentialConfig-username"}},
-		},
-		"gcp": {
-			{to: "GCP_B64ENCODED_CREDENTIALS", from: B64{source: "googlecredentialConfig-authEncodedJson"}},
-		},
-		"digitalocean": {
-			{to: "DIGITALOCEAN_ACCESS_TOKEN", from: Raw{source: "digitaloceancredentialConfig-accessToken"}},
-			{to: "DO_B64ENCODED_CREDENTIALS", from: B64{source: "digitaloceancredentialConfig-accessToken"}},
-		},
-	}
-
-	driverMapping = map[string]string{
-		"vsphere": "vmwarevsphere",
 	}
 )
 
@@ -255,9 +230,6 @@ func (s *SecretMapperSync) Get(ctx context.Context) error {
 		}
 
 		driverName := s.Source.ProviderName()
-		if name, found := driverMapping[driverName]; found {
-			driverName = name
-		}
 
 		if driver, found := secret.GetAnnotations()[DriverNameAnnotation]; !found || driver != driverName {
 			continue

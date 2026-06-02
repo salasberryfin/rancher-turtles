@@ -17,7 +17,6 @@ limitations under the License.
 package controllers
 
 import (
-	"encoding/base64"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -97,43 +96,6 @@ var _ = Describe("Credential Translation", func() {
 		Expect(testEnv.Cleanup(ctx, ns)).ToNot(HaveOccurred())
 	})
 
-	It("Should map DigitalOcean credentials to the provider secret", func() {
-		provider := &turtlesv1.CAPIProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "digitalocean", Namespace: ns.Name},
-			Spec: turtlesv1.CAPIProviderSpec{
-				Type: turtlesv1.Infrastructure,
-				Credentials: &turtlesv1.Credentials{
-					RancherCloudCredential: "do-cred",
-				},
-			},
-		}
-		Expect(cl.Create(ctx, provider)).ToNot(HaveOccurred())
-
-		rancherSecret.Annotations = map[string]string{
-			sync.NameAnnotation:       "do-cred",
-			sync.DriverNameAnnotation: "digitalocean",
-		}
-		rancherSecret.Data = map[string][]byte{
-			"digitaloceancredentialConfig-accessToken": []byte("my-do-token"),
-		}
-		Expect(cl.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-
-		r := newCredentialReconciler(provider)
-		providerSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: provider.Name, Namespace: ns.Name}}
-
-		Eventually(func(g Gomega) {
-			g.Expect(runSyncSecrets(g, r, provider)).ToNot(HaveOccurred())
-			g.Expect(cl.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret)).ToNot(HaveOccurred())
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("DIGITALOCEAN_ACCESS_TOKEN", []byte("my-do-token")))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue(
-				"DO_B64ENCODED_CREDENTIALS",
-				[]byte(base64.StdEncoding.EncodeToString([]byte("my-do-token"))),
-			))
-		}).WithTimeout(10 * time.Second).Should(Succeed())
-
-		Expect(conditions.IsTrue(provider, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-	})
-
 	It("Should map AWS credentials to the provider secret", func() {
 		provider := &turtlesv1.CAPIProvider{
 			ObjectMeta: metav1.ObjectMeta{Name: "aws", Namespace: ns.Name},
@@ -173,140 +135,9 @@ var _ = Describe("Credential Translation", func() {
 		Expect(conditions.IsTrue(provider, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
 	})
 
-	It("Should map Azure credentials to the provider secret", func() {
-		provider := &turtlesv1.CAPIProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "azure", Namespace: ns.Name},
-			Spec: turtlesv1.CAPIProviderSpec{
-				Type: turtlesv1.Infrastructure,
-				Credentials: &turtlesv1.Credentials{
-					RancherCloudCredential: "azure-cred",
-				},
-			},
-		}
-		Expect(cl.Create(ctx, provider)).ToNot(HaveOccurred())
-
-		rancherSecret.Annotations = map[string]string{
-			sync.NameAnnotation:       "azure-cred",
-			sync.DriverNameAnnotation: "azure",
-		}
-		rancherSecret.Data = map[string][]byte{
-			"azurecredentialConfig-subscriptionId": []byte("sub-123"),
-			"azurecredentialConfig-clientId":       []byte("client-456"),
-			"azurecredentialConfig-clientSecret":   []byte("secret-789"),
-			"azurecredentialConfig-tenantId":       []byte("tenant-abc"),
-		}
-		Expect(cl.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-
-		r := newCredentialReconciler(provider)
-		providerSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: provider.Name, Namespace: ns.Name}}
-
-		Eventually(func(g Gomega) {
-			g.Expect(runSyncSecrets(g, r, provider)).ToNot(HaveOccurred())
-			g.Expect(cl.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret)).ToNot(HaveOccurred())
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("AZURE_SUBSCRIPTION_ID", []byte("sub-123")))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("AZURE_CLIENT_ID", []byte("client-456")))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("AZURE_CLIENT_SECRET", []byte("secret-789")))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("AZURE_TENANT_ID", []byte("tenant-abc")))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue(
-				"AZURE_SUBSCRIPTION_ID_B64",
-				[]byte(base64.StdEncoding.EncodeToString([]byte("sub-123"))),
-			))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue(
-				"AZURE_CLIENT_ID_B64",
-				[]byte(base64.StdEncoding.EncodeToString([]byte("client-456"))),
-			))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue(
-				"AZURE_CLIENT_SECRET_B64",
-				[]byte(base64.StdEncoding.EncodeToString([]byte("secret-789"))),
-			))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue(
-				"AZURE_TENANT_ID_B64",
-				[]byte(base64.StdEncoding.EncodeToString([]byte("tenant-abc"))),
-			))
-		}).WithTimeout(10 * time.Second).Should(Succeed())
-
-		Expect(conditions.IsTrue(provider, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-	})
-
-	It("Should map GCP credentials to the provider secret with double base64 encoding", func() {
-		provider := &turtlesv1.CAPIProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "gcp", Namespace: ns.Name},
-			Spec: turtlesv1.CAPIProviderSpec{
-				Type: turtlesv1.Infrastructure,
-				Credentials: &turtlesv1.Credentials{
-					RancherCloudCredential: "gcp-cred",
-				},
-			},
-		}
-		Expect(cl.Create(ctx, provider)).ToNot(HaveOccurred())
-
-		rancherSecret.Annotations = map[string]string{
-			sync.NameAnnotation:       "gcp-cred",
-			sync.DriverNameAnnotation: "gcp",
-		}
-		// Rancher stores GCP credentials as a base64-encoded JSON blob; the sync
-		// layer encodes the raw bytes once more, producing double base64.
-		gcpJSON := `{"type":"service_account"}`
-		rancherSecret.Data = map[string][]byte{
-			"googlecredentialConfig-authEncodedJson": []byte(gcpJSON),
-		}
-		Expect(cl.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-
-		r := newCredentialReconciler(provider)
-		providerSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: provider.Name, Namespace: ns.Name}}
-
-		Eventually(func(g Gomega) {
-			g.Expect(runSyncSecrets(g, r, provider)).ToNot(HaveOccurred())
-			g.Expect(cl.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret)).ToNot(HaveOccurred())
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue(
-				"GCP_B64ENCODED_CREDENTIALS",
-				[]byte(base64.StdEncoding.EncodeToString([]byte(gcpJSON))),
-			))
-		}).WithTimeout(10 * time.Second).Should(Succeed())
-
-		Expect(conditions.IsTrue(provider, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-	})
-
-	It("Should map vSphere credentials to the provider secret", func() {
-		// The Rancher driver name for vSphere is "vmwarevsphere", while the CAPI
-		// provider name is "vsphere".  The sync layer handles the translation.
-		provider := &turtlesv1.CAPIProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "vsphere", Namespace: ns.Name},
-			Spec: turtlesv1.CAPIProviderSpec{
-				Type: turtlesv1.Infrastructure,
-				Credentials: &turtlesv1.Credentials{
-					RancherCloudCredential: "vsphere-cred",
-				},
-			},
-		}
-		Expect(cl.Create(ctx, provider)).ToNot(HaveOccurred())
-
-		rancherSecret.Annotations = map[string]string{
-			sync.NameAnnotation:       "vsphere-cred",
-			sync.DriverNameAnnotation: "vmwarevsphere",
-		}
-		rancherSecret.Data = map[string][]byte{
-			"vmwarevspherecredentialConfig-password": []byte("secret-pass"),
-			"vmwarevspherecredentialConfig-username": []byte("admin-user"),
-		}
-		Expect(cl.Create(ctx, rancherSecret)).ToNot(HaveOccurred())
-
-		r := newCredentialReconciler(provider)
-		providerSecret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: provider.Name, Namespace: ns.Name}}
-
-		Eventually(func(g Gomega) {
-			g.Expect(runSyncSecrets(g, r, provider)).ToNot(HaveOccurred())
-			g.Expect(cl.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret)).ToNot(HaveOccurred())
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("VSPHERE_PASSWORD", []byte("secret-pass")))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("VSPHERE_USERNAME", []byte("admin-user")))
-		}).WithTimeout(10 * time.Second).Should(Succeed())
-
-		Expect(conditions.IsTrue(provider, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
-	})
-
 	It("Should set a failure condition when the Rancher credential secret does not exist", func() {
 		provider := &turtlesv1.CAPIProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "digitalocean", Namespace: ns.Name},
+			ObjectMeta: metav1.ObjectMeta{Name: "aws", Namespace: ns.Name},
 			Spec: turtlesv1.CAPIProviderSpec{
 				Type: turtlesv1.Infrastructure,
 				Credentials: &turtlesv1.Credentials{
@@ -364,12 +195,12 @@ var _ = Describe("Credential Translation", func() {
 
 	It("Should map credentials when the Rancher secret is referenced by namespace and name", func() {
 		provider := &turtlesv1.CAPIProvider{
-			ObjectMeta: metav1.ObjectMeta{Name: "digitalocean", Namespace: ns.Name},
+			ObjectMeta: metav1.ObjectMeta{Name: "aws", Namespace: ns.Name},
 			Spec: turtlesv1.CAPIProviderSpec{
 				Type: turtlesv1.Infrastructure,
 				Credentials: &turtlesv1.Credentials{
 					// Direct namespace:name reference — no annotation lookup required.
-					RancherCloudCredentialNamespaceName: ns.Name + ":do-secret",
+					RancherCloudCredentialNamespaceName: ns.Name + ":aws-secret",
 				},
 			},
 		}
@@ -378,11 +209,13 @@ var _ = Describe("Credential Translation", func() {
 		// Place the Rancher secret in the provider's own namespace (not cattle-global-data).
 		directSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "do-secret",
+				Name:      "aws-secret",
 				Namespace: ns.Name,
 			},
-			Data: map[string][]byte{
-				"digitaloceancredentialConfig-accessToken": []byte("direct-token"),
+			StringData: map[string]string{
+				"amazonec2credentialConfig-accessKey":     "direct-access-key",
+				"amazonec2credentialConfig-secretKey":     "direct-secret-key",
+				"amazonec2credentialConfig-defaultRegion": "eu-west-1",
 			},
 		}
 		Expect(cl.Create(ctx, directSecret)).ToNot(HaveOccurred())
@@ -393,11 +226,11 @@ var _ = Describe("Credential Translation", func() {
 		Eventually(func(g Gomega) {
 			g.Expect(runSyncSecrets(g, r, provider)).ToNot(HaveOccurred())
 			g.Expect(cl.Get(ctx, client.ObjectKeyFromObject(providerSecret), providerSecret)).ToNot(HaveOccurred())
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue("DIGITALOCEAN_ACCESS_TOKEN", []byte("direct-token")))
-			g.Expect(providerSecret.Data).To(HaveKeyWithValue(
-				"DO_B64ENCODED_CREDENTIALS",
-				[]byte(base64.StdEncoding.EncodeToString([]byte("direct-token"))),
-			))
+			g.Expect(providerSecret.Data).To(HaveKeyWithValue("AWS_ACCESS_KEY_ID", []byte("direct-access-key")))
+			g.Expect(providerSecret.Data).To(HaveKeyWithValue("AWS_SECRET_ACCESS_KEY", []byte("direct-secret-key")))
+			g.Expect(providerSecret.Data).To(HaveKeyWithValue("AWS_REGION", []byte("eu-west-1")))
+			g.Expect(providerSecret.Data).To(HaveKey("AWS_B64ENCODED_CREDENTIALS"))
+			g.Expect(providerSecret.Data["AWS_B64ENCODED_CREDENTIALS"]).ToNot(BeEmpty())
 		}).WithTimeout(10 * time.Second).Should(Succeed())
 
 		Expect(conditions.IsTrue(provider, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
