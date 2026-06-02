@@ -323,8 +323,7 @@ var _ = Describe("Credential Translation", func() {
 		Eventually(func(g Gomega) {
 			g.Expect(cl.Get(ctx, client.ObjectKeyFromObject(provider), provider)).ToNot(HaveOccurred())
 			r.GenericProviderReconciler.Provider = provider
-			//nolint:errcheck // error is expected; we care about the condition, not the returned error
-			_, _ = r.syncSecrets(ctx)
+			r.syncSecrets(ctx) //nolint:errcheck // error is expected; we care about the condition, not the returned error
 			g.Expect(conditions.IsFalse(provider, string(turtlesv1.RancherCredentialsSecretCondition))).To(BeTrue())
 			g.Expect(conditions.GetMessage(provider, string(turtlesv1.RancherCredentialsSecretCondition))).
 				To(ContainSubstring("key not found"))
