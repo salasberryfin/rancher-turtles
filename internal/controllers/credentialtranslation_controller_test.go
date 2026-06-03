@@ -32,35 +32,9 @@ import (
 	. "sigs.k8s.io/controller-runtime/pkg/envtest/komega"
 )
 
-// newCredentialReconciler returns a CAPIProviderReconciler wired to the shared test
-// environment client.  The caller must update r.GenericProviderReconciler.Provider
-// before each call to syncSecrets so that it holds the most recent version of the
-// provider object (including its ResourceVersion).
-func newCredentialReconciler(provider *turtlesv1.CAPIProvider) *CAPIProviderReconciler {
-	return &CAPIProviderReconciler{
-		Client: cl,
-		GenericProviderReconciler: controller.GenericProviderReconciler{
-			Provider:     provider,
-			ProviderList: &turtlesv1.CAPIProviderList{},
-			Client:       cl,
-			Config:       testEnv.GetConfig(),
-		},
-	}
-}
-
-// runSyncSecrets fetches the latest version of provider, sets it on r and calls
-// r.syncSecrets.  It is designed to be called repeatedly inside an Eventually
-// block so that transient conflicts are retried automatically.
-func runSyncSecrets(g Gomega, r *CAPIProviderReconciler, provider *turtlesv1.CAPIProvider) error {
-	g.Expect(cl.Get(ctx, client.ObjectKeyFromObject(provider), provider)).ToNot(HaveOccurred())
-	r.GenericProviderReconciler.Provider = provider
-	_, err := r.syncSecrets(ctx)
-
-	return err
-}
-
 var _ = Describe("Credential Translation", func() {
 	var (
+		r             *CAPIProviderReconciler
 		ns            *corev1.Namespace
 		rancherSecret *corev1.Secret
 	)
@@ -68,6 +42,15 @@ var _ = Describe("Credential Translation", func() {
 	BeforeEach(func() {
 		SetClient(testEnv)
 		SetContext(ctx)
+
+		r = &CAPIProviderReconciler{
+			Client: cl,
+			GenericProviderReconciler: controller.GenericProviderReconciler{
+				ProviderList: &turtlesv1.CAPIProviderList{},
+				Client:       cl,
+				Config:       testEnv.GetConfig(),
+			},
+		}
 
 		var err error
 		ns, err = testEnv.CreateNamespace(ctx, "credtranslation")
