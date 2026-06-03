@@ -23,20 +23,21 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/rancher/turtles/internal/test/helpers"
-	"k8s.io/client-go/kubernetes/scheme"
-	ctrl "sigs.k8s.io/controller-runtime"
-
 	managementv3 "github.com/rancher/turtles/api/rancher/management/v3"
 	provisioningv1 "github.com/rancher/turtles/api/rancher/provisioning/v1"
 	turtlesv1 "github.com/rancher/turtles/api/v1alpha1"
-	operatorv1 "sigs.k8s.io/cluster-api-operator/api/v1alpha2"
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
-
+	"github.com/rancher/turtles/internal/sync"
+	"github.com/rancher/turtles/internal/test/helpers"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
+	operatorv1 "sigs.k8s.io/cluster-api-operator/api/v1alpha2"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -123,4 +124,10 @@ var _ = BeforeSuite(func() {
 
 	kubeConfigBytes, err = clientcmd.Write(*kubeConfig)
 	Expect(err).NotTo(HaveOccurred())
+
+	// Create the shared namespace used by credential translation tests once for
+	// the entire suite to avoid conflicts between individual test cases.
+	Expect(client.IgnoreAlreadyExists(cl.Create(ctx, &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: sync.RancherCredentialsNamespace},
+	}))).ToNot(HaveOccurred())
 })
