@@ -340,6 +340,24 @@ extras:
       # fleetAgentHealthProbeAddress: sets the default fleet-agent health probe bind address
       fleetAgentHealthProbeAddress: ":18081"
 
+# rke2InPlaceUpdates: RKE2 in-place update extension server.
+# Only relevant for Rancher+Turtles+CAPRKE2 users.  Non-Rancher users should
+# implement their own extension and leave this disabled.
+rke2InPlaceUpdates:
+  # enabled: Deploy the in-place update extension server alongside CAPRKE2.
+  # When true, the extension is activated only for cluster namespaces that carry
+  # the label rke2.io/in-place-updates=enabled (set by Rancher day 2 ops).
+  enabled: false
+  # namespace: The namespace for the extension server Deployment and related resources.
+  namespace: rke2-extension-system
+  image:
+    # repository: Extension server image.
+    repository: ghcr.io/rancher/cluster-api-provider-rke2-extension
+    # tag: Defaults to the chart's appVersion when empty.
+    tag: ""
+  # logLevel: Verbosity level passed to --v (0 = minimal, 5 = very verbose).
+  logLevel: "0"
+
 # These images are for documentation purposes only and are *not* used directly in the chart. They are used as input during a release for the purpose of creating a list of images necessary for airgapped installations.
 images:
   addonFleet:
@@ -372,3 +390,6 @@ images:
   infrastructureVSphere:
     repository: rancher/cluster-api-vsphere-controller
     tag: v1.16.1
+  rke2Extension:
+    repository: rancher/cluster-api-provider-rke2-extension
+    tag: v0.25.0

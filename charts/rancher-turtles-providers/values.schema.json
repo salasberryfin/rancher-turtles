@@ -180,6 +180,31 @@
         }
       }
     },
+    "rke2InPlaceUpdates": {
+      "type": "object",
+      "description": "RKE2 in-place update extension server (Rancher+Turtles+CAPRKE2 only).",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Deploy the in-place update extension server."
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Namespace for the extension server Deployment and related resources."
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": { "type": "string" },
+            "tag": { "type": "string" }
+          }
+        },
+        "logLevel": {
+          "type": "string",
+          "description": "Verbosity level for --v flag (0-5)."
+        }
+      }
+    },
     "extras": {
       "type": "object",
       "description": "Extra configuration for providers.",

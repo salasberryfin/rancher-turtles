@@ -1,0 +1,224 @@
+{{- if .Values.rke2InPlaceUpdates.enabled }}
+{{- $ns := .Values.rke2InPlaceUpdates.namespace }}
+{{- $image := .Values.rke2InPlaceUpdates.image.repository }}
+{{- $tag := .Values.rke2InPlaceUpdates.image.tag | default .Chart.AppVersion }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rke2-extension-manager
+  namespace: {{ $ns }}
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rke2-extension-manager-role
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+rules:
+  - apiGroups: [cluster.x-k8s.io]
+    resources: [machines]
+    verbs: [get, list, watch]
+  - apiGroups: [bootstrap.cluster.x-k8s.io]
+    resources: [rke2configs, rke2configtemplates]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch, update, patch]
+  - apiGroups: [""]
+    resources: [configmaps, events]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [authentication.k8s.io]
+    resources: [tokenreviews]
+    verbs: [create]
+  - apiGroups: [authorization.k8s.io]
+    resources: [subjectaccessreviews]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rke2-extension-manager-rolebinding
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rke2-extension-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: rke2-extension-manager
+    namespace: {{ $ns }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rke2-extension-webhook-service
+  namespace: {{ $ns }}
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+spec:
+  ports:
+    - port: 443
+      targetPort: webhook-server
+  selector:
+    control-plane: rke2-extension-controller-manager
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: rke2-extension-selfsigned-issuer
+  namespace: {{ $ns }}
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: rke2-extension-serving-cert
+  namespace: {{ $ns }}
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+spec:
+  dnsNames:
+    - rke2-extension-webhook-service.{{ $ns }}.svc
+    - rke2-extension-webhook-service.{{ $ns }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: rke2-extension-selfsigned-issuer
+  secretName: rke2-extension-webhook-service-cert
+  subject:
+    organizations:
+      - Rancher by SUSE
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rke2-extension-controller-manager
+  namespace: {{ $ns }}
+  labels:
+    control-plane: rke2-extension-controller-manager
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: rke2-extension-controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        control-plane: rke2-extension-controller-manager
+        cluster.x-k8s.io/provider: runtime-extension-rke2
+    spec:
+      serviceAccountName: rke2-extension-manager
+      terminationGracePeriodSeconds: 10
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+      {{- range .Values.imagePullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+      {{- end }}
+      containers:
+        - name: manager
+          image: {{ $image }}:{{ $tag }}
+          imagePullPolicy: IfNotPresent
+          command: [/manager]
+          args:
+            - "--leader-elect"
+            - "--v={{ .Values.rke2InPlaceUpdates.logLevel }}"
+            - "--feature-gates=InPlaceUpdates=true"
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          ports:
+            - containerPort: 9443
+              name: webhook-server
+              protocol: TCP
+            - containerPort: 9440
+              name: healthz
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: healthz
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            privileged: false
+            runAsUser: 65532
+            runAsGroup: 65532
+          terminationMessagePolicy: FallbackToLogsOnError
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          volumeMounts:
+            - mountPath: /tmp/k8s-webhook-server/serving-certs
+              name: cert
+              readOnly: true
+      volumes:
+        - name: cert
+          secret:
+            secretName: rke2-extension-webhook-service-cert
+---
+apiVersion: runtime.cluster.x-k8s.io/v1beta2
+kind: ExtensionConfig
+metadata:
+  name: rke2-extension
+  labels:
+    cluster.x-k8s.io/provider: runtime-extension-rke2
+  annotations:
+    runtime.cluster.x-k8s.io/inject-ca-from-secret: {{ $ns }}/rke2-extension-webhook-service-cert
+spec:
+  clientConfig:
+    service:
+      name: rke2-extension-webhook-service
+      namespace: {{ $ns }}
+      port: 443
+  namespaceSelector:
+    matchLabels:
+      rke2.io/in-place-updates: "enabled"
+{{- end }}
