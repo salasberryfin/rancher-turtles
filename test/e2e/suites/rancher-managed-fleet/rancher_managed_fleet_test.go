@@ -542,7 +542,7 @@ var _ = Describe("[GCP] [GKE] Create and delete CAPI cluster functionality shoul
 	})
 
 	specs.CreateUsingGitOpsSpec(ctx, func() specs.CreateUsingGitOpsSpecInput {
-		return specs.CreateUsingGitOpsSpecInput{
+		input := specs.CreateUsingGitOpsSpecInput{
 			E2EConfig:                      e2e.LoadE2EConfig(),
 			BootstrapClusterProxy:          bootstrapClusterProxy,
 			ClusterTemplate:                e2e.CAPIGCPGKETopology,
@@ -567,5 +567,11 @@ var _ = Describe("[GCP] [GKE] Create and delete CAPI cluster functionality shoul
 				},
 			},
 		}
+		if v := resolveGKEKubernetesVersion(ctx); v != "" {
+			input.AdditionalTemplateVariables = map[string]string{
+				"GCP_GKE_KUBERNETES_VERSION": v,
+			}
+		}
+		return input
 	})
 })
