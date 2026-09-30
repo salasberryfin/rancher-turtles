@@ -59,7 +59,7 @@ func TestE2E(t *testing.T) {
 var _ = SynchronizedBeforeSuite(
 	func() []byte {
 		e2eConfig := e2e.LoadE2EConfig()
-		e2eConfig.ManagementClusterName = e2eConfig.ManagementClusterName + "-rancher-managed-fleet"
+		// e2eConfig.ManagementClusterName = e2eConfig.ManagementClusterName + "-rancher-managed-fleet"
 		setupClusterResult = testenv.SetupTestCluster(ctx, testenv.SetupTestClusterInput{
 			E2EConfig: e2eConfig,
 			Scheme:    e2e.InitScheme(),
