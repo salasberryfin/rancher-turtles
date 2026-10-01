@@ -173,5 +173,7 @@ func setFeatures(capiProvider *turtlesv1.CAPIProvider) {
 		variables["EXP_CLUSTER_RESOURCE_SET"] = strconv.FormatBool(features.ClusterResourceSet)
 		variables["CLUSTER_TOPOLOGY"] = strconv.FormatBool(features.ClusterTopology)
 		variables["EXP_MACHINE_POOL"] = strconv.FormatBool(features.MachinePool)
+		variables["EXP_RUNTIME_SDK"] = strconv.FormatBool(features.RuntimeSDK)
+		variables["EXP_IN_PLACE_UPDATES"] = strconv.FormatBool(features.InPlaceUpdates)
 	}
 }

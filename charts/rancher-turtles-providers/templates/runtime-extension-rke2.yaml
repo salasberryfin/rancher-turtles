@@ -1,0 +1,63 @@
+{{- if index .Values "providers" "runtimeExtensionRKE2" "enabled" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ index .Values "providers" "runtimeExtensionRKE2" "namespace" }}
+  {{- if .Values.rancherNamespaces.enabled }}
+  {{- with .Values.rancherNamespaces.labels }}
+  labels:
+{{- toYaml . | nindent 4 }}
+  {{- end }}
+  annotations:
+    cattle.io/managed-namespace: "true"
+  {{- with .Values.rancherNamespaces.annotations }}
+{{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: rke2-extension
+  namespace: {{ index .Values "providers" "runtimeExtensionRKE2" "namespace" }}
+spec:
+  name: rke2
+  type: runtimeextension
+{{- if index .Values  "providers" "runtimeExtensionRKE2" "version" }}
+  version: {{ index .Values "providers" "runtimeExtensionRKE2" "version" }}
+{{- end }}
+{{- if index .Values  "providers" "runtimeExtensionRKE2" "enableAutomaticUpdate" }}
+  enableAutomaticUpdate: {{ index .Values "providers" "runtimeExtensionRKE2" "enableAutomaticUpdate" }}
+{{- end }}
+{{- if index .Values  "providers" "runtimeExtensionRKE2" "variables" }}
+  variables:
+  {{- range $key, $val := .Values.providers.runtimeExtensionRKE2.variables }}
+    {{ $key }}: "{{ $val }}"
+  {{- end }}
+{{- end }}
+{{- if index .Values  "providers" "runtimeExtensionRKE2" "manager" }}
+  manager:
+{{ toYaml (index .Values "providers" "runtimeExtensionRKE2" "manager") | nindent 4 }}
+{{- end }}
+{{- if .Values.imagePullSecrets }}
+  deployment:
+    imagePullSecrets:
+{{- range .Values.imagePullSecrets }}
+      - name: {{ . }}
+{{- end }}
+{{- end }}
+{{- if index .Values "providers" "runtimeExtensionRKE2" "fetchConfig" }}
+  fetchConfig:
+    {{- if index .Values "providers" "runtimeExtensionRKE2" "fetchConfig" "url" }}
+    url: {{ index .Values "providers" "runtimeExtensionRKE2" "fetchConfig" "url" }}
+    {{- end }}
+    {{- if index .Values "providers" "runtimeExtensionRKE2" "fetchConfig" "oci" }}
+    oci: {{ index .Values "providers" "runtimeExtensionRKE2" "fetchConfig" "oci" }}
+    {{- end }}
+    {{- if index .Values "providers" "runtimeExtensionRKE2" "fetchConfig" "selector" }}
+    selector:
+      {{- toYaml (index .Values "providers" "runtimeExtensionRKE2" "fetchConfig" "selector") | nindent 6 }}
+    {{- end }}
+{{- end }}
+{{- end }}

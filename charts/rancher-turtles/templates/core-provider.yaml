@@ -31,6 +31,14 @@ spec:
 {{- if index .Values "cluster-api-operator" "cluster-api" "core" "version" }}
   version: {{ index .Values "cluster-api-operator" "cluster-api" "core" "version" }}
 {{- end }}
+{{- with index .Values "cluster-api-operator" "cluster-api" "core" "features" }}
+  features:
+    machinePool: {{ .machinePool }}
+    clusterResourceSet: {{ .clusterResourceSet }}
+    clusterTopology: {{ .clusterTopology }}
+    runtimeSDK: {{ .runtimeSDK }}
+    inPlaceUpdates: {{ .inPlaceUpdates }}
+{{- end }}
   additionalManifests:
     name: capi-additional-rbac-roles
     namespace: {{ index .Values "cluster-api-operator" "cluster-api" "core" "namespace" }}

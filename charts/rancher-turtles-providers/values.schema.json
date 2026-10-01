@@ -76,6 +76,14 @@
             "clusterTopology": {
               "type": "boolean",
               "description": "Enables CAPI ClusterClass support."
+            },
+            "runtimeSDK": {
+              "type": "boolean",
+              "description": "Enables CAPI RuntimeSDK support."
+            },
+            "inPlaceUpdates": {
+              "type": "boolean",
+              "description": "Enables CAPI InPlaceUpdates support."
             }
           }
         },
@@ -129,6 +137,18 @@
               "required": [
                 "oci"
               ]
+            },
+            {
+              "properties": {
+                "selector": {
+                  "type": "object",
+                  "description": "Label selector of the ConfigMaps holding the provider components and metadata."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "selector"
+              ]
             }
           ]
         }
@@ -176,6 +196,9 @@
           "$ref": "#/$defs/providerSchema"
         },
         "infrastructureVSphere": {
+          "$ref": "#/$defs/providerSchema"
+        },
+        "runtimeExtensionRKE2": {
           "$ref": "#/$defs/providerSchema"
         }
       }

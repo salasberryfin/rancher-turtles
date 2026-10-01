@@ -35,6 +35,7 @@ spec:
     machinePool: {{ index .Values "providers" "controlplaneRKE2" "features" "machinePool" }}
     clusterResourceSet: {{ index .Values "providers" "controlplaneRKE2" "features" "clusterResourceSet" }}
     clusterTopology: {{ index .Values "providers" "controlplaneRKE2" "features" "clusterTopology" }}
+    inPlaceUpdates: {{ index .Values "providers" "controlplaneRKE2" "features" "inPlaceUpdates" }}
 {{- end }}
 {{- if index .Values  "providers" "controlplaneRKE2" "variables" }}
   variables:

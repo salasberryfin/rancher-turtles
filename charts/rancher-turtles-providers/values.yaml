@@ -144,6 +144,8 @@ providers:
   #   machinePool: false
   #   clusterResourceSet: false
   #   clusterTopology: false
+  #   # inPlaceUpdates: requires runtimeExtensionRKE2 and the core CAPI runtimeSDK and inPlaceUpdates features.
+  #   inPlaceUpdates: false
   # variables: Optional environment variables exposed to the controller manager.
   # variables:
   #   ENV_VAR: "value"
@@ -158,6 +160,30 @@ providers:
   # manager: Optional controller manager settings.
   # manager:
   #   syncPeriod: "5m"
+  #   verbosity: 5
+  # runtimeExtensionRKE2: RKE2 Runtime Extension, implementing in-place updates via Rancher system-agent.
+  runtimeExtensionRKE2:
+    # enabled: Enables the installation of this provider.
+    enabled: false
+    # namespace: The namespace where the provider manifests will be applied.
+    namespace: rke2-extension-system
+    # enableAutomaticUpdate: Allows the provider to be updated automatically whenever this chart is updated.
+    enableAutomaticUpdate: true
+  # version: Optional provider version
+  # version: ""
+  # variables: Optional environment variables exposed to the extension manager.
+  # variables:
+  #   ENV_VAR: "value"
+  # fetchConfig: Override default artifact source via URL, OCI or selector (specify one).
+  # fetchConfig:
+  #   url: "https://github.com/<org>/<repo>/releases"
+  #   # oci: "ghcr.io/<org>/<artifact>:<tag>"
+  #   # selector:
+  #   #   matchLabels:
+  #   #     provider.cluster.x-k8s.io/name: rke2
+  #   #     provider.cluster.x-k8s.io/type: runtimeextension
+  # manager: Optional manager settings.
+  # manager:
   #   verbosity: 5
   # infrastructureAWS: AWS Infrastructure Provider (CAPA).
   infrastructureAWS:

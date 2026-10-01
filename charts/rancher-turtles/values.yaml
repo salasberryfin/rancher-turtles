@@ -80,6 +80,18 @@ cluster-api-operator:
       # replicas: Number of capi-controller-manager pods (CAPIProvider.spec.deployment.replicas).
       # Increase for HA when nodes may be drained or recycled by automation. Defaults to 1.
       replicas: 1
+      # features: Feature flags for core Cluster API (CAPIProvider.spec.features).
+      features:
+        # machinePool: Enable the MachinePool feature.
+        machinePool: true
+        # clusterResourceSet: Enable the ClusterResourceSet feature.
+        clusterResourceSet: true
+        # clusterTopology: Enable the ClusterTopology (ClusterClass) feature.
+        clusterTopology: true
+        # runtimeSDK: Enable the RuntimeSDK feature, required by runtime extensions.
+        runtimeSDK: false
+        # inPlaceUpdates: Enable the InPlaceUpdates feature. Requires runtimeSDK and an in-place update runtime extension.
+        inPlaceUpdates: false
       # Optional scheduling settings passed to CAPIProvider.spec.deployment.
       # nodeSelector: {}
       # tolerations: []

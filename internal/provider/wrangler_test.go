@@ -75,6 +75,36 @@ var _ = Describe("Alter component functions", func() {
 		Expect(needACertAnnotation).To(Equal("my-cert-secret"))
 	})
 
+	It("Should patch the Service referenced by an ExtensionConfig and drop the runtime inject annotation", func() {
+		cert := unstructured.Unstructured{}
+		cert.SetKind("Certificate")
+		cert.SetName("serving-cert")
+		cert.SetNamespace("test")
+		Expect(unstructured.SetNestedField(cert.Object, "webhook-service-cert", "spec", "secretName")).ToNot(HaveOccurred())
+
+		svc := unstructured.Unstructured{}
+		svc.SetKind("Service")
+		svc.SetName("webhook-service")
+		svc.SetNamespace("test")
+
+		extensionConfig := unstructured.Unstructured{}
+		extensionConfig.SetKind(ExtensionConfigKind)
+		extensionConfig.SetName("test")
+		extensionConfig.SetAnnotations(map[string]string{RuntimeInjectCAFromSecretAnnotationKey: "test/webhook-service-cert"})
+		Expect(unstructured.SetNestedMap(extensionConfig.Object, map[string]interface{}{
+			"name":      "webhook-service",
+			"namespace": "test",
+		}, "spec", "clientConfig", "service")).ToNot(HaveOccurred())
+
+		alteredComponents, err := WranglerPatcher([]unstructured.Unstructured{svc, cert, extensionConfig})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(alteredComponents).To(HaveLen(2))
+		Expect(alteredComponents[0].GetKind()).To(Equal("Service"))
+		Expect(alteredComponents[0].GetAnnotations()).To(HaveKeyWithValue(CertificateAnnotationKey, "webhook-service-cert"))
+		Expect(alteredComponents[1].GetKind()).To(Equal(ExtensionConfigKind))
+		Expect(alteredComponents[1].GetAnnotations()).NotTo(HaveKey(RuntimeInjectCAFromSecretAnnotationKey))
+	})
+
 	It("Should fail when Certificate secretName is missing", func() {
 		cert := unstructured.Unstructured{}
 		cert.SetKind("Certificate")

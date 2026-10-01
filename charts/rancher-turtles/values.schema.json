@@ -173,6 +173,16 @@
                 "enableAutomaticUpdates": {
                   "type": "boolean"
                 },
+                "features": {
+                  "type": "object",
+                  "properties": {
+                    "machinePool": { "type": "boolean" },
+                    "clusterResourceSet": { "type": "boolean" },
+                    "clusterTopology": { "type": "boolean" },
+                    "runtimeSDK": { "type": "boolean" },
+                    "inPlaceUpdates": { "type": "boolean" }
+                  }
+                },
                 "version": {
                   "type": "string"
                 }
