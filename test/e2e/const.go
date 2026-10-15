@@ -155,10 +155,8 @@ var (
 )
 
 const (
-	RancherTurtlesNamespace  = "cattle-turtles-system"
-	RancherNamespace         = "cattle-system"
-	TraefikIngressNamespace  = "traefik"
-	TraefikIngressDeployment = "traefik"
+	RancherTurtlesNamespace = "cattle-turtles-system"
+	RancherNamespace        = "cattle-system"
 )
 
 type ManagementClusterEnvironmentType string
@@ -177,6 +175,10 @@ const (
 
 	RancherHostnameVar = "RANCHER_HOSTNAME"
 
+	RancherStableRepoNameVar = "RANCHER_STABLE_REPO_NAME"
+	RancherStablePathVar     = "RANCHER_STABLE_PATH"
+	RancherStableURLVar      = "RANCHER_STABLE_URL"
+
 	ArtifactsFolderVar     = "ARTIFACTS_FOLDER"
 	UseExistingClusterVar  = "USE_EXISTING_CLUSTER"
 	HelmBinaryPathVar      = "HELM_BINARY_PATH"
@@ -186,7 +188,6 @@ const (
 	KubernetesManagementVersionChartUpgradeVar = "KUBERNETES_MANAGEMENT_VERSION_CHART_UPGRADE"
 	KubernetesVersionChartUpgradeVar           = "KUBERNETES_VERSION_CHART_UPGRADE"
 
-	RKE2VersionVar        = "RKE2_KUBERNETES_VERSION"
 	RKE2V2ProvVersionVar  = "V2PROV_RKE2_KUBERNETES_VERSION"
 	RKE2InPlaceUpdatesVar = "RKE2_IN_PLACE_UPDATES"
 	RKE2VersionUpgradeVar = "RKE2_KUBERNETES_VERSION_UPGRADE"

@@ -59,6 +59,7 @@ type DeployRancherInput struct {
 	RancherChartPath string `env:"RANCHER_PATH"`
 
 	// RancherVersion is the version of Rancher.
+	// If both RancherVersion and RancherImageTag are empty, the latest Rancher head version supported by Turtles is resolved from RancherChartURL.
 	RancherVersion string `env:"RANCHER_VERSION"`
 
 	// RancherImageTag is the image tag for Rancher.
@@ -145,7 +146,9 @@ func DeployRancher(ctx context.Context, input DeployRancherInput) PreRancherInst
 	})
 
 	if input.RancherVersion == "" && input.RancherImageTag == "" {
-		Fail("RancherVersion or RancherImageTag is required")
+		input.RancherVersion = ResolveRancherHeadVersion(ctx, ResolveRancherHeadVersionInput{
+			RancherChartURL: input.RancherChartURL,
+		})
 	}
 	if input.RancherVersion != "" && input.RancherImageTag != "" {
 		Fail("Only one of RancherVersion or RancherImageTag cen be used")
@@ -259,35 +262,6 @@ func DeployRancher(ctx context.Context, input DeployRancherInput) PreRancherInst
 	}, input.ControllerWaitInterval...).ShouldNot(HaveOccurred())
 
 	return rancherHookResult
-}
-
-// RestartRancherInput represents the input parameters for restarting Rancher.
-type RestartRancherInput struct {
-	// BootstrapClusterProxy is the cluster proxy for the bootstrap cluster.
-	BootstrapClusterProxy framework.ClusterProxy
-
-	// RancherNamespace is the namespace where Rancher is deployed.
-	RancherNamespace string `envDefault:"cattle-system"`
-
-	// RancherWaitInterval is the wait interval for Rancher restart.
-	RancherWaitInterval []interface{} `envDefault:"15m,10s"`
-}
-
-// RestartRancher restarts the Rancher application by killing its pods.
-// It expects the required input parameters to be non-nil.
-func RestartRancher(ctx context.Context, input RestartRancherInput) {
-	Expect(turtlesframework.Parse(&input)).To(Succeed(), "Failed to parse environment variables")
-
-	Expect(ctx).NotTo(BeNil(), "ctx is required for RestartRancher")
-	Expect(input.BootstrapClusterProxy).ToNot(BeNil(), "BootstrapClusterProxy is required for RestartRancher")
-	Expect(input.RancherNamespace).ToNot(BeEmpty(), "RancherNamespace is required for RestartRancher")
-	Expect(input.RancherWaitInterval).ToNot(BeNil(), "RancherWaitInterval is required for RestartRancher")
-
-	By("Restarting Rancher by killing its pods")
-
-	Eventually(func() error {
-		return input.BootstrapClusterProxy.GetClient().DeleteAllOf(ctx, &corev1.Pod{}, client.InNamespace(input.RancherNamespace), client.MatchingLabels{"app": "rancher"})
-	}, input.RancherWaitInterval...).ShouldNot(HaveOccurred())
 }
 
 // RancherDeployIngressInput represents the input parameters for deploying an ingress in Rancher.
