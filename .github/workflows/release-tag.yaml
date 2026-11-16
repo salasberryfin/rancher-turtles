@@ -1,0 +1,73 @@
+name: Turtles release tag
+
+# Sets the providers chart version, commits it to the release branch and pushes the release tag.
+# Pushing the tag triggers the "Turtles release" workflow (release.yaml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release, e.g. v0.28.1 or v0.28.1-rc.0. Run this from the matching release branch, e.g. release/v0.28."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # to read vault secrets
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check the tag is valid and does not exist yet
+        run: |
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+)\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "'$TAG' is not a valid tag. Use a tag like v0.28.1 or v0.28.1-rc.0."
+            exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" != "release/v${BASH_REMATCH[1]}" ]; then
+            echo "Tag $TAG must be released from release/v${BASH_REMATCH[1]}, not from $GITHUB_REF_NAME."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/$GITHUB_REPOSITORY" "$TAG" >/dev/null; then
+            echo "Tag $TAG already exists."
+            exit 1
+          fi
+
+      - name: Read Vault secrets
+        uses: rancher-eio/read-vault-secrets@0da85151ad1f19ed7986c41587e45aac1ace74b6
+        with:
+          secrets: |
+            secret/data/github/repo/${{ github.repository }}/github/app-credentials appId | APPID ;
+            secret/data/github/repo/${{ github.repository }}/github/app-credentials privateKey | PRIVATEKEY
+
+      # Tags pushed with the default GITHUB_TOKEN do not trigger other workflows, so we use the GitHub App token.
+      - name: Generate GitHub App token
+        id: generate-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ env.APPID }}
+          private-key: ${{ env.PRIVATEKEY }}
+
+      - name: Checkout release branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+
+      - name: Set providers chart version
+        run: |
+          VERSION="${TAG#v}"
+          sed -i -E "s/^version: .*/version: ${VERSION}/; s/^appVersion: .*/appVersion: \"${VERSION}\"/" charts/rancher-turtles-providers/Chart.yaml
+          git diff
+
+      - name: Commit, tag and push
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git diff --quiet || git commit -s -am "chore: set providers chart version to ${TAG#v}"
+          git tag -a "$TAG" -m "$TAG"
+          git tag -a "test/$TAG" -m "Testing framework $TAG"
+          git tag -a "examples/$TAG" -m "ClusterClass examples $TAG"
+          git push --atomic origin "HEAD:$GITHUB_REF_NAME" "$TAG" "test/$TAG" "examples/$TAG"
