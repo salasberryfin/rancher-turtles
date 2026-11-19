@@ -84,11 +84,11 @@ jobs:
           ref: ${{ env.TURTLES_REF }}
           path: turtles
 
+      # TEST ONLY: Vault only serves rancher/turtles; the fork uses a PAT for salasberryfin/rancher.
       - name: Read the rancher/rancher token
-        uses: rancher-eio/read-vault-secrets@0da85151ad1f19ed7986c41587e45aac1ace74b6
-        with:
-          secrets: |
-            github/token/rancher--rancher--pull_requests--write token | GH_TOKEN
+        env:
+          FORK_RANCHER_TOKEN: ${{ secrets.FORK_RANCHER_TOKEN }}
+        run: echo "GH_TOKEN=$FORK_RANCHER_TOKEN" >> "$GITHUB_ENV"
 
       - name: Checkout rancher/rancher
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -119,7 +119,8 @@ jobs:
         working-directory: rancher
         run: |
           git push origin "$BRANCH"
-          body=$(../turtles/.github/scripts/release-message.sh "$PREV_TURTLES" "$NEW_TURTLES")
+          # TEST ONLY: release-message.sh reads the release from rancher/turtles, which has no test tag.
+          body="Test of release-against-rancher.yml from $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (chart $NEW_CHART)"
           gh pr create \
             --repo "$OWNER/rancher" \
             --base "$RANCHER_REF" \
