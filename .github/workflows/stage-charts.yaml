@@ -89,7 +89,20 @@ jobs:
 
       # The version is worked out by cargueiro from the appVersion and the versions that are
       # already released.
-      - name: Stamp, check, package and push the chart, and start the shipping
-        uses: rancher/charts/.github/actions/ship-staged@chart-owners
-        with:
-          chart-dir: ${{ runner.temp }}/charts/rancher-turtles
+      # TEST ONLY: stands in for ship-staged, which pushes to the staging registry and dispatches
+      # rancher/charts. It checks the chart that would have been handed to it.
+      - name: Stand-in for ship-staged
+        env:
+          CHART_DIR: ${{ runner.temp }}/charts/rancher-turtles
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          find "$CHART_DIR" -maxdepth 2 | sort
+          cat "$CHART_DIR/Chart.yaml"
+          app_version=$(yq '.appVersion' "$CHART_DIR/Chart.yaml")
+          if [ "$app_version" != "${TAG#v}" ]; then
+            echo "::error::appVersion is $app_version, expected ${TAG#v}"
+            exit 1
+          fi
+          helm lint "$CHART_DIR"
+          echo "ship-staged would get chart-dir=$CHART_DIR (appVersion $app_version)" >> "$GITHUB_STEP_SUMMARY"

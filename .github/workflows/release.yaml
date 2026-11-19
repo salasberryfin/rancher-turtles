@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   release:
+    if: false # TEST ONLY: no image pushes in the fork
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -72,6 +73,7 @@ jobs:
         prime-make-target: push-prime-image
 
   merge:
+    if: false # TEST ONLY: no image pushes in the fork
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -182,8 +184,7 @@ jobs:
   chart-release:
     name: Helm chart release
     uses: ./.github/workflows/chart-release.yml
-    needs:
-    - merge
+    # TEST ONLY: needs merge removed, it is skipped in the fork
     with:
       tag: ${{ github.ref_name }}
       org: rancher
