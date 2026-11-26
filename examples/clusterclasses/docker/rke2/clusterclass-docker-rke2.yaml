@@ -54,6 +54,12 @@ spec:
         openAPIV3Schema:
           description: Sets the control plane maxSurge to 0, so control plane machines are updated in-place instead of being replaced. Requires at least 3 control plane replicas.
           type: boolean
+    - name: systemDefaultRegistry
+      required: false
+      schema:
+        openAPIV3Schema:
+          description: Private registry used for all RKE2 system images, including the image used for in-place updates.
+          type: string
   patches:
     - name: inPlaceUpdates
       enabledIf: '{{ .inPlaceUpdates }}'
@@ -67,6 +73,33 @@ spec:
             - op: replace
               path: /spec/template/spec/rolloutStrategy/rollingUpdate/maxSurge
               value: 0
+    - name: systemDefaultRegistry
+      enabledIf: '{{ ne .systemDefaultRegistry "" }}'
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/agentConfig/systemDefaultRegistry
+              valueFrom:
+                variable: systemDefaultRegistry
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: RKE2ConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            # The worker template has no agentConfig, so the whole object is added.
+            - op: add
+              path: /spec/template/spec/agentConfig
+              valueFrom:
+                template: |
+                  systemDefaultRegistry: {{ .systemDefaultRegistry }}
     - name: rke2CNI
       enabledIf: '{{ ne .rke2CNI "" }}'
       definitions:
