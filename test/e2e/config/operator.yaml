@@ -4,6 +4,13 @@ images:
   # Use local dev images built source tree;
   - name: "{TURTLES_IMAGE}:{TURTLES_VERSION}"
     loadBehavior: tryLoad
+  # Local CAPRKE2 builds (`make docker-build` in cluster-api-provider-rke2). Used when CAPRKE2_LOCAL_IMAGE_TAG is "dev".
+  - name: "ghcr.io/rancher/cluster-api-provider-rke2-bootstrap:dev"
+    loadBehavior: tryLoad
+  - name: "ghcr.io/rancher/cluster-api-provider-rke2-controlplane:dev"
+    loadBehavior: tryLoad
+  - name: "ghcr.io/rancher/cluster-api-provider-rke2-extension:dev"
+    loadBehavior: tryLoad
 
 intervals:
   default/wait-controllers: ["15m", "10s"]
@@ -58,6 +65,11 @@ variables:
   RKE2_IN_PLACE_UPDATES: "true"
   # RKE2_KUBERNETES_VERSION_UPGRADE is the version RKE2_KUBERNETES_VERSION is upgraded to in-place.
   RKE2_KUBERNETES_VERSION_UPGRADE: "v1.37.1+rke2r1"
+  # RKE2_SYSTEM_DEFAULT_REGISTRY sets systemDefaultRegistry in the Docker RKE2 ClusterClass.
+  RKE2_SYSTEM_DEFAULT_REGISTRY: ""
+  # CAPRKE2_LOCAL_IMAGE_TAG runs locally built CAPRKE2 images (bootstrap, control plane and runtime extension)
+  # with this tag instead of the released ones. Leave empty to use the released images.
+  CAPRKE2_LOCAL_IMAGE_TAG: ""
   # Kubernetes version used for v2prov
   V2PROV_RKE2_KUBERNETES_VERSION: "v1.37.2+rke2r1"
   RKE2_CNI: "none"

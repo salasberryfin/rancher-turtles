@@ -42,6 +42,8 @@ spec:
       value: '${CLUSTER_NAME}-docker-token'
     - name: inPlaceUpdates
       value: ${IN_PLACE_UPDATES:=false}
+    - name: systemDefaultRegistry
+      value: "${RKE2_SYSTEM_DEFAULT_REGISTRY:=}"
     version: ${RKE2_KUBERNETES_VERSION}
     workers:
       machineDeployments:

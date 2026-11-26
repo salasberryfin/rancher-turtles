@@ -194,6 +194,8 @@ const (
 	RKE2InPlaceUpdatesVar = "RKE2_IN_PLACE_UPDATES"
 	RKE2VersionUpgradeVar = "RKE2_KUBERNETES_VERSION_UPGRADE"
 
+	CAPRKE2LocalImageTagVar = "CAPRKE2_LOCAL_IMAGE_TAG"
+
 	AzureSubIDVar        = "AZURE_SUBSCRIPTION_ID"
 	AzureClientIDVar     = "AZURE_CLIENT_ID"
 	AzureClientSecretVar = "AZURE_CLIENT_SECRET"

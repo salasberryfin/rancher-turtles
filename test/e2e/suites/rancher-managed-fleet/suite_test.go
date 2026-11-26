@@ -33,6 +33,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	turtlesv1 "github.com/rancher/turtles/api/v1alpha1"
 	"github.com/rancher/turtles/test/e2e"
 	"github.com/rancher/turtles/test/testenv"
 )
@@ -112,6 +113,25 @@ var _ = SynchronizedBeforeSuite(
 		if e2eConfig.GetVariableOrEmpty(e2e.RKE2InPlaceUpdatesVar) == "true" {
 			// Enables in-place updates in CAPRKE2, which also installs the RKE2 runtime extension.
 			providersValues["providers.controlplaneRKE2.features.inPlaceUpdates"] = "true"
+		}
+
+		// Uses locally built CAPRKE2 images instead of the released ones. Images set in the ClusterctlConfig
+		// take precedence over the ones in the embedded Turtles config, so the providers are installed with them.
+		if tag := e2eConfig.GetVariableOrEmpty(e2e.CAPRKE2LocalImageTagVar); tag != "" {
+			By("Using locally built CAPRKE2 images with tag " + tag)
+			Expect(setupClusterResult.BootstrapClusterProxy.GetClient().Create(ctx, &turtlesv1.ClusterctlConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      turtlesv1.ClusterctlConfigName,
+					Namespace: e2e.RancherTurtlesNamespace,
+				},
+				Spec: turtlesv1.ClusterctlConfigSpec{
+					Images: []turtlesv1.Image{
+						{Name: "bootstrap-rke2", Repository: "ghcr.io/rancher", Tag: tag},
+						{Name: "control-plane-rke2", Repository: "ghcr.io/rancher", Tag: tag},
+						{Name: "runtime-extension-rke2", Repository: "ghcr.io/rancher", Tag: tag},
+					},
+				},
+			})).To(Succeed())
 		}
 
 		testenv.DeployRancherTurtlesProviders(ctx, testenv.DeployRancherTurtlesProvidersInput{
