@@ -30,6 +30,8 @@ spec:
         value: calico
       - name: awsClusterIdentityName
         value: ${AWS_CLUSTER_IDENTITY_NAME}
+      - name: inPlaceUpdates
+        value: ${IN_PLACE_UPDATES:=false}
     version: ${RKE2_KUBERNETES_VERSION}
     workers:
       machineDeployments:
